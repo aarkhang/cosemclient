@@ -3,6 +3,7 @@
 #include <iostream>
 #include <iomanip>
 #include <ctime>
+#include <cstring>
 
 #include "CosemClient.h"
 #include "serial.h"
@@ -124,7 +125,6 @@ CosemClient::CosemClient()
     , mUseTcpGateway(false)
     , mSerialHandle(0)
     , mThread(0)
-    , mClient(true, 1, 1, DLMS_AUTHENTICATION_LOW, "001CA021", DLMS_INTERFACE_TYPE_HDLC)
     , mTerminate(false)
     , mReadIndex(0U)
     , mDevice(NONE)
@@ -135,19 +135,11 @@ CosemClient::CosemClient()
 
 void CosemClient::Initialize(Device device, const Modem &modem, const Cosem &cosem, const hdlc_t &hdlc, const std::vector<Object> &list)
 {
-    CGXByteBuffer pass;
-    pass.AddString(cosem.lls);
-
     mDevice = device;
     mModem = modem;
     mCosem = cosem;
     mHdlc = hdlc;
     mList = list;
-
-    mClient.m_Settings.SetPassword(pass);
-    mClient.m_Settings.SetClientAddress(hdlc.client_addr);
-    mClient.m_Settings.SetServerAddress(hdlc.phy_address);
-
 
     if (mDevice != MODEM)
     {
@@ -248,7 +240,7 @@ bool CosemClient::HdlcProcess(hdlc_t &hdlc, std::string &data, int timeout)
 //                puts("\r\n");
 
                 // the frame seems correct, check echo
-                if (memcmp(mSendCopy.c_str(), ptr, mSendCopy.size()) == 0)
+                if (std::memcmp(mSendCopy.c_str(), ptr, mSendCopy.size()) == 0)
                 {
                     // remove echo from the string
                     csm_array_reader_jump(&array, size);
@@ -446,11 +438,10 @@ int CosemClient::ConnectHdlc()
 
 int CosemClient::ConnectAarq()
 {
-    std::vector<CGXByteBuffer> data;
-
     int ret = 0;
-    ret = mClient.AARQRequest(data);
 
+// FIXME AARQ using cosemlib
+#if 0
     if ((ret == 0) && (data.size() > 0))
     {
       //  QByteArray req = QByteArray::fromHex("7EA0210002002303939A74818012050180060180070400000001080400000007655E7E");
@@ -469,7 +460,7 @@ int CosemClient::ConnectAarq()
             }
         }
     }
-
+#endif
     return ret;
 }
 
@@ -542,15 +533,8 @@ extern "C" void AxdrData(uint8_t type, uint32_t size, uint8_t *data)
 
 int CosemClient::ReadObject(const Object &obj)
 {
-    int ret;
-    std::vector<CGXByteBuffer> data;
+    int ret = -1;
     bool allowSelectiveAccess = false;
-
-
-    CGXDLMSProfileGeneric profile(obj.ln);
-
-    CGXDLMSClock clock("0.0.1.0.0.255");
-    profile.SetSortObject(&clock);
 
     std::tm tm_start = {};
     std::tm tm_end = {};
@@ -608,20 +592,20 @@ int CosemClient::ReadObject(const Object &obj)
     if (allowSelectiveAccess)
     {
         //Read data from the meter.
-        ret = mClient.ReadRowsByRange(&profile, &tm_start, &tm_end, data);
+   //     ret = mClient.ReadRowsByRange(&profile, &tm_start, &tm_end, data);
     }
     else
     {
-        ret = mClient.Read(&profile, (int)obj.attribute_id, data);
+   //     ret = mClient.Read(&profile, (int)obj.attribute_id, data);
     }
 
-    if ((ret == 0) && (data.size() > 0))
+ //   if ((ret == 0) && (data.size() > 0))
     {
-        CGXByteBuffer gxPacket = data.at(0);
-        std::string request((const char *)gxPacket.GetData(), gxPacket.GetSize());
+   //     CGXByteBuffer gxPacket = data.at(0);
+   //     std::string request((const char *)gxPacket.GetData(), gxPacket.GetSize());
 
         printf("** Sending ReadProfile request...\r\n");
-        if (Send(request, PRINT_HEX))
+ //       if (Send(request, PRINT_HEX))
         {
             std::string data;
 

@@ -8,14 +8,6 @@
 #include <chrono>
 #include <list>
 
-// Gurux
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wpedantic"
-#include "GXDLMSClient.h"
-#include "GXDLMSClock.h"
-#include "GXDLMSRegister.h"
-#pragma GCC diagnostic pop
-
 #include "csm_services.h"
 #include "hdlc.h"
 
@@ -174,7 +166,6 @@ private:
 
     std::string mData;
     pthread_t mThread;
-    CGXDLMSClient mClient;
     bool mTerminate;
     std::uint32_t mReadIndex;
     Device mDevice;
