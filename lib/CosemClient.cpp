@@ -281,7 +281,6 @@ int CosemClient::ConnectAarq()
 #if 0
     if ((ret == 0) && (data.size() > 0))
     {
-      //  QByteArray req = QByteArray::fromHex("7EA0210002002303939A74818012050180060180070400000001080400000007655E7E");
         CGXByteBuffer gxPacket = data.at(0);
         std::string request((const char *)gxPacket.GetData(), gxPacket.GetSize());
 
@@ -360,9 +359,9 @@ std::string CosemClient::ResultToString(csm_data_access_result result)
     return ss.str();
 }
 
-AxdrPrinter gPrinter;
+static AxdrPrinter gPrinter;
 
-extern "C" void AxdrData(uint8_t type, uint32_t size, uint8_t *data)
+static void AxdrData(uint8_t type, uint32_t size, uint8_t *data)
 {
     gPrinter.Append(type, size, data);
 }
