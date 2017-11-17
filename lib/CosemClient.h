@@ -60,10 +60,11 @@ private:
     std::uint32_t mReadIndex;
     Configuration mConf;
     Transport mTransport;
-    hdlc_t mHdlc;
+    csm_asso_state mAssoState;
 
     int ConnectHdlc();
-    bool HdlcProcess(hdlc_t &hdlc, std::string &data, int timeout);
+    bool HdlcProcess(const std::string &send, std::string &rcv, int timeout);
+    std::string EncapsulateRequest(csm_array *request);
     bool PerformCosemRead();
     int ConnectAarq();
     int ReadObject(const Object &obj);

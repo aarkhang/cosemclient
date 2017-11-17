@@ -18,11 +18,10 @@ Configuration::Configuration()
 
 
 // Very tolerant, use default values of classes if corresponding parameter is not found
-void Configuration::ParseComFile(const std::string &file, Transport &phy)
+void Configuration::ParseComFile(const std::string &file, Transport::Params &comm)
 {
     JsonReader reader;
     JsonValue json;
-    Transport::Params comm;
 
     if (reader.ParseFile(json, file))
     {
@@ -108,8 +107,6 @@ void Configuration::ParseComFile(const std::string &file, Transport &phy)
                 hdlc.client_addr = static_cast<unsigned int>(val.GetInteger());
             }
         }
-
-        phy.Initialize(comm);
     }
     else
     {

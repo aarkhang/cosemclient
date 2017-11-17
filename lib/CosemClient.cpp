@@ -4,6 +4,7 @@
 #include <iomanip>
 #include <ctime>
 #include <cstring>
+#include <cstdlib>
 
 #include "CosemClient.h"
 #include "serial.h"
@@ -40,30 +41,33 @@ CosemClient::CosemClient()
 bool CosemClient::Initialize(const std::string &commFile, const std::string &objectsFile)
 {
     bool ok = false;
+
+    Transport::Params params;
+
+    hdlc_init(&mConf.hdlc);
     mConf.hdlc.sender = HDLC_CLIENT;
 
-    if (mTransport.Open())
+    mConf.ParseComFile(commFile, params);
+
+    ok = mConf.ParseObjectsFile(objectsFile);
+    std::cout << "** Using LLS: " << mConf.cosem.lls << std::endl;
+    std::cout << "** Using HDLC address: " << mConf.hdlc.phy_address << std::endl;
+
+    if (mConf.modem.useModem)
     {
-        mConf.ParseComFile(commFile, mTransport);
-
-        ok = mConf.ParseObjectsFile(objectsFile);
-        std::cout << "** Using LLS: " << mConf.cosem.lls << std::endl;
-        std::cout << "** Using HDLC address: " << mConf.hdlc.phy_address << std::endl;
-
-        if (mConf.modem.useModem)
-        {
-            std::cout << "** Using Modem device" << std::endl;
-            mModemState = DISCONNECTED;
-        }
-        else
-        {
-            // Skip Modem state chart when no modem is in use
-            mModemState = CONNECTED;
-        }
+        std::cout << "** Using Modem device" << std::endl;
+        mModemState = DISCONNECTED;
     }
     else
     {
-        printf("** Cannot open serial port.\r\n");
+        // Skip Modem state chart when no modem is in use
+        mModemState = CONNECTED;
+    }
+
+    ok = mTransport.Open(params);
+    if (ok)
+    {
+        mTransport.Start();
     }
     return ok;
 }
@@ -84,17 +88,44 @@ void CosemClient::WaitForStop()
 }
 
 
-bool CosemClient::HdlcProcess(hdlc_t &hdlc, std::string &data, int timeout)
+bool CosemClient::HdlcProcess(const std::string &send, std::string &rcv, int timeout)
 {
     bool retCode = false;
-    csm_array array;
-    std::string sendCopy = data;
 
     csm_array_init(&mRcvArray, (uint8_t*)&mRcvBuffer[0], cBufferSize, 0U, 0U);
 
     bool loop = true;
+
+    std::string dataToSend = send;
+    std::string dataSent;
     do
     {
+        if (dataToSend.size() > 0)
+        {
+            if (mTransport.Send(dataToSend, PRINT_HEX))
+            {
+                if (mConf.hdlc.type == HDLC_PACKET_TYPE_I)
+                {
+                    if (mConf.hdlc.sss == 7U)
+                    {
+                        mConf.hdlc.sss = 0U;
+                    }
+                    else
+                    {
+                        mConf.hdlc.sss++;
+                    }
+                }
+                dataSent = dataToSend;
+                dataToSend.clear();
+            }
+            else
+            {
+                loop = false;
+                retCode = false;
+            }
+        }
+
+        std::string data;
         if (mTransport.WaitForData(data, timeout))
         {
             // We have something, add buffer
@@ -106,8 +137,8 @@ bool CosemClient::HdlcProcess(hdlc_t &hdlc, std::string &data, int timeout)
 
             if (loop)
             {
-                uint8_t *ptr = csm_array_rd_data(&array);
-                uint32_t size = csm_array_unread(&array);
+                uint8_t *ptr = csm_array_rd_data(&mRcvArray);
+                uint32_t size = csm_array_unread(&mRcvArray);
 
 
 //                printf("Ptr: 0x%08X, Unread: %d\r\n", (unsigned long)ptr, size);
@@ -117,12 +148,12 @@ bool CosemClient::HdlcProcess(hdlc_t &hdlc, std::string &data, int timeout)
 //                puts("\r\n");
 
                 // the frame seems correct, check echo
-                if (std::memcmp(sendCopy.c_str(), ptr, sendCopy.size()) == 0)
+                if (dataSent.compare(0, dataSent.size(), (char*)ptr, size) == 0)
                 {
                     // remove echo from the string
-                    csm_array_reader_jump(&array, size);
-                    ptr = csm_array_rd_data(&array);
-                    size = csm_array_unread(&array);
+                    csm_array_reader_jump(&mRcvArray, size);
+                    ptr = csm_array_rd_data(&mRcvArray);
+                    size = csm_array_unread(&mRcvArray);
                     puts("Echo canceled!\r\n");
                 }
 
@@ -130,27 +161,40 @@ bool CosemClient::HdlcProcess(hdlc_t &hdlc, std::string &data, int timeout)
 //                print_hex((const char *)ptr, size);
 //                puts("\r\n");
 
-                hdlc.sender = HDLC_SERVER;
-
                 do
                 {
+                    hdlc_t hdlc;
+                    hdlc.sender = HDLC_SERVER;
                     int ret = hdlc_decode(&hdlc, ptr, size);
                     if (ret == HDLC_OK)
                     {
                         puts("Good packet\r\n");
 
                         // God packet! Copy to cosem data
-                        data.append((const char*)&ptr[hdlc.data_index], hdlc.data_size);
+                        rcv.append((const char*)&ptr[hdlc.data_index], hdlc.data_size);
 
                         // Continue with next one
-                        csm_array_reader_jump(&array, hdlc.frame_size);
+                        csm_array_reader_jump(&mRcvArray, hdlc.frame_size);
 
+                        if (hdlc.type == HDLC_PACKET_TYPE_I)
+                        {
+                            // ack last hdlc frame
+                            if (hdlc.sss == 7U)
+                            {
+                                mConf.hdlc.rrr = 0U;
+                            }
+                            else
+                            {
+                                mConf.hdlc.rrr = hdlc.sss + 1;
+                            }
+                        }
 
                         // Test if it is a last HDLC packet
                         if ((hdlc.segmentation == 0U) &&
                             (hdlc.poll_final == 1U))
                         {
                             puts("Final packet\r\n");
+
                             retCode = true; // good Cosem packet
                             loop = false; // quit
                         }
@@ -159,24 +203,18 @@ bool CosemClient::HdlcProcess(hdlc_t &hdlc, std::string &data, int timeout)
                             puts("Segmentation packet: ");
                             hdlc_print_result(&hdlc, HDLC_OK);
                             // There are remaining frames to be received.
-                            // At this time, it depends of the window size negociated
                             if (hdlc.poll_final == 1U)
                             {
                                 // Send RR
                                 hdlc.sender = HDLC_CLIENT;
-                                hdlc.rrr = hdlc.sss + 1;
-                                size = hdlc_encode_rr(&hdlc, (uint8_t*)&mSndBuffer[0], cBufferSize);
-                                if (mTransport.Send(std::string(&mSndBuffer[0], size), PRINT_HEX) < 0)
-                                {
-                                    retCode = false;
-                                    loop = false; // quit
-                                }
+                                size = hdlc_encode_rr(&mConf.hdlc, (uint8_t*)&mSndBuffer[0], cBufferSize);
+                                dataToSend.assign(&mSndBuffer[0], size);
                             }
                         }
 
                         // go to next frame, if any
-                        ptr = csm_array_rd_data(&array);
-                        size = csm_array_unread(&array);
+                        ptr = csm_array_rd_data(&mRcvArray);
+                        size = csm_array_unread(&mRcvArray);
                     }
                     else
                     {
@@ -242,31 +280,22 @@ int CosemClient::ConnectHdlc()
 {
     int ret = -1;
 
-    int size = hdlc_encode_snrm(&mHdlc, (uint8_t *)&mSndBuffer[0], cBufferSize);
+    int size = hdlc_encode_snrm(&mConf.hdlc, (uint8_t *)&mSndBuffer[0], cBufferSize);
 
     std::string snrmData(&mSndBuffer[0], size);
-    if (mTransport.Send(snrmData, PRINT_HEX))
+    std::string data;
+
+    if (HdlcProcess(snrmData, data, 4))
     {
-        std::string data;
-        hdlc_t hdlc;
-        hdlc_init(&hdlc); // default values, in case of server does not have any parameters
-        if (HdlcProcess(hdlc, data, 4))
+        ret = data.size();
+        Transport::Printer(data.c_str(), data.size(), PRINT_HEX);
+
+        // Decode UA
+        ret = hdlc_decode_info_field(&mConf.hdlc, (const uint8_t *)data.c_str(), data.size());
+        if (ret == HDLC_OK)
         {
-            ret = data.size();
-            Transport::Printer(data.c_str(), data.size(), PRINT_HEX);
-
-            // Decode UA
-            ret = hdlc_decode_info_field(&hdlc, (const uint8_t *)data.c_str(), data.size());
-            if (ret == HDLC_OK)
-            {
-                hdlc_print_result(&hdlc, ret);
-                mHdlc.max_info_field_rx = hdlc.max_info_field_rx;
-                mHdlc.max_info_field_tx = hdlc.max_info_field_tx;
-                mHdlc.window_rx = hdlc.window_rx;
-                mHdlc.window_tx = hdlc.window_tx;
-
-                ret = 1U;
-            }
+            hdlc_print_result(&mConf.hdlc, ret);
+            ret = 1U;
         }
     }
 
@@ -277,26 +306,25 @@ int CosemClient::ConnectAarq()
 {
     int ret = 0;
 
-// FIXME AARQ using cosemlib
-#if 0
-    if ((ret == 0) && (data.size() > 0))
-    {
-        CGXByteBuffer gxPacket = data.at(0);
-        std::string request((const char *)gxPacket.GetData(), gxPacket.GetSize());
+    csm_array scratch_array;
+    csm_array_init(&scratch_array, &mScratch[0], cBufferSize, 0, 3);
 
-        if (Send(request, PRINT_HEX))
+    mAssoState.auth_level = CSM_AUTH_LOW_LEVEL;
+    mAssoState.ref = LN_REF;
+
+    ret = csm_asso_encoder(&mAssoState, &scratch_array, CSM_ASSO_AARQ);
+
+    if (ret)
+    {
+        std::string request_data = EncapsulateRequest(&scratch_array);
+        std::string data;
+
+        if (HdlcProcess(request_data, data, 5))
         {
-            std::string data;
-            hdlc_t hdlc;
-            hdlc_init(&hdlc);
-            if (HdlcProcess(hdlc, data, 5))
-            {
-                ret = data.size();
-                Printer(data.c_str(), data.size(), PRINT_HEX);
-            }
+            ret = data.size();
+            Transport::Printer(data.c_str(), data.size(), PRINT_HEX);
         }
     }
-#endif
     return ret;
 }
 
@@ -367,9 +395,38 @@ static void AxdrData(uint8_t type, uint32_t size, uint8_t *data)
 }
 
 
+std::string CosemClient::EncapsulateRequest(csm_array *request)
+{
+    std::string request_data;
+
+    if (request->offset != 3U)
+    {
+        std::cout << "Cosem array must have room for LLC" << std::endl;
+    }
+    else
+    {
+        // remove offset
+        request->offset = 0;
+        request->wr_index += 3U; // adjust size written
+
+        csm_array_set(request, 0U, 0xE6U);
+        csm_array_set(request, 1U, 0xE6U);
+        csm_array_set(request, 2U, 0x00U);
+
+        // Encode HDLC
+        mConf.hdlc.sender = HDLC_CLIENT;
+        int send_size = hdlc_encode_data(&mConf.hdlc, (uint8_t *)&mSndBuffer[0], cBufferSize, request->buff, csm_array_written(request));
+
+        request_data.assign((char *)&mSndBuffer[0], send_size);
+    }
+
+    return request_data;
+}
+
+
 int CosemClient::ReadObject(const Object &obj)
 {
-    int ret = -1;
+    int ret = 1;
     bool allowSelectiveAccess = false;
 
     std::tm tm_start = {};
@@ -421,165 +478,157 @@ int CosemClient::ReadObject(const Object &obj)
         }
     }
 
+    // For reception
+    csm_array app_array;
+    csm_array_init(&app_array, &mAppBuffer[0], cAppBufferSize, 0, 0);
 
-    csm_array array;
-    csm_array_init(&array, &mAppBuffer[0], cAppBufferSize, 0, 0);
+    csm_request request;
 
     if (allowSelectiveAccess)
     {
-        //Read data from the meter.
-   //     ret = mClient.ReadRowsByRange(&profile, &tm_start, &tm_end, data);
+        request.db_request.access.use_sel_access = TRUE;
+        //Read data from the meter. FIXME: generate selective access
+        // csm_client_encode_selective_access_by_range(csm_array *array, csm_object_t *restricting_object, csm_array *start, csm_array *end)
     }
     else
     {
-   //     ret = mClient.Read(&profile, (int)obj.attribute_id, data);
+        request.db_request.access.use_sel_access = FALSE;
     }
 
- //   if ((ret == 0) && (data.size() > 0))
+    request.type = SVC_GET_REQUEST_NORMAL;
+    request.sender_invoke_id = 0xC1U;
+    request.db_request.data.class_id = obj.class_id;
+
+    std::vector<std::string> obis = Util::Split(obj.ln, ".");
+
+    if (obis.size() == 6)
     {
-   //     CGXByteBuffer gxPacket = data.at(0);
-   //     std::string request((const char *)gxPacket.GetData(), gxPacket.GetSize());
+        request.db_request.data.obis.A = strtol(obis[0].c_str(), NULL, 10);
+        request.db_request.data.obis.B = strtol(obis[1].c_str(), NULL, 10);
+        request.db_request.data.obis.C = strtol(obis[2].c_str(), NULL, 10);
+        request.db_request.data.obis.D = strtol(obis[3].c_str(), NULL, 10);
+        request.db_request.data.obis.E = strtol(obis[4].c_str(), NULL, 10);
+        request.db_request.data.obis.F = strtol(obis[5].c_str(), NULL, 10);
+    }
+    else
+    {
+        ret = 0;
+    }
+    request.db_request.data.id = obj.attribute_id;
 
+    csm_array scratch_array;
+    csm_array_init(&scratch_array, &mScratch[0], cBufferSize, 0, 3);
+
+    if (ret && svc_get_request_encoder(&request, &scratch_array))
+    {
         printf("** Sending ReadProfile request...\r\n");
- //       if (Send(request, PRINT_HEX))
+
+        std::string request_data = EncapsulateRequest(&scratch_array);
+        std::string data;
+        csm_response response;
+        bool loop = true;
+
+        do
         {
-            std::string data;
+            data.clear();
 
-            hdlc_t hdlc;
-
-            csm_response response;
-            csm_request request;
-            bool loop = true;
-            mHdlc.sss = 2U;  // initial request frame index
-
-            do
+            if (HdlcProcess(request_data, data, 5))
             {
-                data.clear();
-                hdlc_init(&hdlc);
+                Transport::Printer(data.c_str(), data.size(), PRINT_HEX);
+                csm_array_init(&scratch_array, &mScratch[0], cBufferSize, 0, 0);
 
-                if (HdlcProcess(hdlc, data, 5))
+                csm_array_write_buff(&scratch_array, (const uint8_t *)data.c_str(), data.size());
+
+                uint8_t llc1, llc2, llc3;
+                int valid = csm_array_read_u8(&scratch_array, &llc1);
+                valid = valid && csm_array_read_u8(&scratch_array, &llc2);
+                valid = valid && csm_array_read_u8(&scratch_array, &llc3);
+
+                if (valid && (llc1 == 0xE6U) &&
+                    (llc2 == 0xE7U) &&
+                    (llc3 == 0x00U))
                 {
-                    Transport::Printer(data.c_str(), data.size(), PRINT_HEX);
-                    csm_array partial;
-                    csm_array_init(&partial, &mScratch[0], cBufferSize, 0, 0);
-
-                    csm_array_write_buff(&partial, (const uint8_t *)data.c_str(), data.size());
-
-                    uint8_t llc1, llc2, llc3;
-                    int valid = csm_array_read_u8(&partial, &llc1);
-                    valid = valid && csm_array_read_u8(&partial, &llc2);
-                    valid = valid && csm_array_read_u8(&partial, &llc3);
-
-                    if (valid && (llc1 == 0xE6U) &&
-                        (llc2 == 0xE7U) &&
-                        (llc3 == 0x00U))
+                    // Good Cosem server packet
+                    if (csm_client_decode(&response, &scratch_array))
                     {
-                        // Good Cosem server packet
-                        if (csm_client_decode(&response, &partial))
+                        if (response.access_result == CSM_ACCESS_RESULT_SUCCESS)
                         {
-                            if (response.access_result == CSM_ACCESS_RESULT_SUCCESS)
+                            // Copy data into app data
+                            csm_array_write_buff(&app_array, csm_array_rd_data(&scratch_array), csm_array_unread(&scratch_array));
+
+                            if (response.type == SVC_GET_RESPONSE_NORMAL)
                             {
-                                // Copy data into app data
-                                csm_array_write_buff(&array, csm_array_rd_data(&partial), csm_array_unread(&partial));
-
-                                if (response.type == SVC_GET_RESPONSE_NORMAL)
+                                // We have the data
+                                loop = false;
+                            }
+                            else if (response.type == SVC_GET_RESPONSE_WITH_DATABLOCK)
+                            {
+                                // Check if last block
+                                if (csm_client_has_more_data(&response))
                                 {
-                                    // We have the data
-                                    loop = false;
-                                }
-                                else if (response.type == SVC_GET_RESPONSE_WITH_DATABLOCK)
-                                {
-                                    // Check if last block
-                                    if (csm_client_has_more_data(&response))
-                                    {
-                                        // Send next block
-                                        request.type = SVC_GET_REQUEST_NEXT;
-                                        request.db_request.block_number = response.block_number;
-                                        request.sender_invoke_id = response.invoke_id;
+                                    // Send next block
+                                    request.type = SVC_GET_REQUEST_NEXT;
+                                    request.db_request.block_number = response.block_number;
+                                    request.sender_invoke_id = response.invoke_id;
 
-                                        csm_array_init(&partial, &mScratch[0], cBufferSize, 0, 0);
+                                    csm_array_init(&scratch_array, &mScratch[0], cBufferSize, 0, 3);
 
-                                        csm_array_write_u8(&partial, 0xE6U);
-                                        csm_array_write_u8(&partial, 0xE6U);
-                                        csm_array_write_u8(&partial, 0x00U);
+                                    svc_get_request_encoder(&request, &scratch_array);
 
-                                        svc_get_request_encoder(&request, &partial);
+                                    hdlc_print_result(&mConf.hdlc, HDLC_OK);
+                                    request_data = EncapsulateRequest(&scratch_array);
 
-                                        hdlc_print_result(&hdlc, HDLC_OK);
-
-                                        // Encode HDLC
-                                        hdlc.sender = HDLC_CLIENT;
-                                        hdlc.rrr = hdlc.sss + 1; // ack last hdlc frame
-                                        hdlc.sss = mHdlc.sss;  // our internal frame counter
-
-                                        if (mHdlc.sss == 7U)
-                                        {
-                                            mHdlc.sss = 0U;
-                                        }
-                                        else
-                                        {
-                                            mHdlc.sss++;
-                                        }
-                                        int send_size = hdlc_encode_data(&hdlc, (uint8_t *)&mSndBuffer[0], cBufferSize, &mScratch[0], csm_array_written(&partial));
-
-                                        std::string request((char *)&mSndBuffer[0], send_size);
-
-                                        printf("** Sending ReadProfile next...\r\n");
-                                        if (!mTransport.Send(request, PRINT_HEX))
-                                        {
-                                            puts("Cannot send next data\r\n");
-                                            loop = false;
-                                        }
-                                    }
-                                    else
-                                    {
-                                        puts("No more data\r\n");
-                                        loop = false;
-
-                                        uint32_t size = 0U;
-                                        if (csm_axdr_decode_block(&array, &size))
-                                        {
-                                            std::cout << "** Block of data of size: " << size << std::endl;
-
-                                            csm_axdr_decode_tags(&array, AxdrData);
-                                            std::cout << gPrinter.Get() << std::endl;
-                                        }
-
-                                      //  print_hex((const char *)&mAppBuffer[0], csm_array_written(&array));
-                                    }
+                                    printf("** Sending ReadProfile next...\r\n");
                                 }
                                 else
                                 {
-                                    puts("Service not supported\r\n");
+                                    puts("No more data\r\n");
                                     loop = false;
+
+                                    uint32_t size = 0U;
+                                    if (csm_axdr_decode_block(&app_array, &size))
+                                    {
+                                        std::cout << "** Block of data of size: " << size << std::endl;
+
+                                        csm_axdr_decode_tags(&app_array, AxdrData);
+                                        std::cout << gPrinter.Get() << std::endl;
+                                    }
+
+                                  //  print_hex((const char *)&mAppBuffer[0], csm_array_written(&array));
                                 }
                             }
                             else
                             {
-                                std::cout << "** Data access result: " << ResultToString(response.access_result) << std::endl;
+                                puts("Service not supported\r\n");
                                 loop = false;
                             }
                         }
                         else
                         {
-                            puts("Cannot decode Cosem response\r\n");
+                            std::cout << "** Data access result: " << ResultToString(response.access_result) << std::endl;
                             loop = false;
                         }
                     }
                     else
                     {
-                        puts("Not a compliant HDLC LLC\r\n");
+                        puts("Cannot decode Cosem response\r\n");
                         loop = false;
                     }
                 }
                 else
                 {
-                    puts("Cannot get HDLC data\r\n");
+                    puts("Not a compliant HDLC LLC\r\n");
                     loop = false;
                 }
             }
-            while(loop);
+            else
+            {
+                puts("Cannot get HDLC data\r\n");
+                loop = false;
+            }
         }
+        while(loop);
+
     }
 
     return ret;

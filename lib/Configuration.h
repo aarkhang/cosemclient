@@ -85,7 +85,7 @@ struct Configuration
 
     Configuration();
 
-    void ParseComFile(const std::string &file, Transport &phy);
+    void ParseComFile(const std::string &file, Transport::Params &comm);
     bool ParseObjectsFile(const std::string &file);
 };
 

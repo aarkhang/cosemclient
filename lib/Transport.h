@@ -50,10 +50,10 @@ public:
 
     Transport();
 
-    void Initialize(const Params &params);
+    void Start();
     void WaitForStop();
 
-    bool Open();
+    bool Open(const Params &params);
     int Send(const std::string &data, PrintFormat format);
     bool WaitForData(std::string &data, int timeout);
 
@@ -64,6 +64,7 @@ private:
     static const uint32_t cBufferSize = 40U*1024U;
     char mRcvBuffer[cBufferSize];
 
+    bool mStarted;
     Params mConf;
     bool mUseTcpGateway;
     int mSerialHandle;

@@ -13,7 +13,8 @@
 #include "Util.h"
 
 Transport::Transport()
-    : mUseTcpGateway(false)
+    : mStarted(false)
+    , mUseTcpGateway(false)
     , mSerialHandle(0)
     , mTerminate(false)
 {
@@ -39,9 +40,11 @@ void Transport::Printer(const char *text, int size, PrintFormat format)
 
 
 
-bool Transport::Open()
+bool Transport::Open(const Transport::Params &params)
 {
     bool ret = false;
+
+    mConf = params;
 
     std::cout << "** Opening serial port " << mConf.port << " at " << mConf.baudrate << std::endl;
     mSerialHandle = serial_open(mConf.port.c_str());
@@ -54,6 +57,11 @@ bool Transport::Open()
             ret = true;
         }
     }
+    if (!ret)
+    {
+        printf("** Cannot open serial port.\r\n");
+    }
+
     return ret;
 }
 
@@ -102,13 +110,19 @@ bool Transport::WaitForData(std::string &data, int timeout)
 void Transport::WaitForStop()
 {
     mTerminate = true;
-    mThread.join();
+
+    if (mStarted)
+    {
+        mThread.join();
+    }
 }
 
 
 
 void Transport::Reader()
 {
+    mStarted = true;
+
     while (!mTerminate)
     {
         int ret = serial_read(mSerialHandle, &mRcvBuffer[0], cBufferSize, 10);
@@ -144,10 +158,8 @@ void Transport::Reader()
     }
 }
 
-void Transport::Initialize(const Transport::Params &params)
+void Transport::Start()
 {
-    mConf = params;
-
     mThread = std::thread(Transport::EntryPoint, this);
 }
 
