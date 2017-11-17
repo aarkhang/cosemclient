@@ -114,31 +114,6 @@ int csm_sys_gcm_finish(uint8_t channel, uint8_t *tag)
 }
 
 
-int csm_sys_test_lls_password(uint8_t sap, uint8_t *buf, uint32_t size)
-{
-    int valid = FALSE;
-    (void) sap;
-    (void) buf;
-
-    if (size == CSM_DEF_LLS_SIZE)
-    {
-        valid = TRUE;
-        // FIXME when the file system will be here
-        /*
-        for (uint32_t i = 0U; i < CFG_COSEM_NB_ASSOS; i++)
-        {
-            if (sap == cfg_cosem_passwords[i].sap)
-            {
-                int ret = memcmp(buf, cfg_cosem_passwords[i].lls_password, size);
-                valid = (ret == 0) ? TRUE : FALSE;
-                break;
-            }
-        }
-        */
-    }
-    return valid;
-}
-
 uint8_t csm_sys_get_mechanism_id(uint8_t sap)
 {
     uint8_t mechanism_id = CSM_AUTH_LOWEST_LEVEL;

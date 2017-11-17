@@ -38,8 +38,10 @@ public:
 
     bool PerformTask();
 
-
     std::string ResultToString(csm_data_access_result result);
+
+
+    std::string GetLls() { return mConf.cosem.lls; }
 
 private:
     ModemState mModemState;
