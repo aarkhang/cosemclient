@@ -28,170 +28,59 @@ int StringToBin(const std::string &in, char *out)
     return ret;
 }
 
-void Printer(const char *text, int size, PrintFormat format)
-{
-    std::cout << Util::CurrentDateTime("%Y-%m-%d.%X") << ": ";
-
-    if (format != NO_PRINT)
-    {
-        if (format == PRINT_RAW)
-        {
-            fwrite(text, size, 1, stdout);
-        }
-        else
-        {
-            print_hex(text, size);
-        }
-    }
-}
-
-
-Semaphore::Semaphore(size_t count)
-    : mCount{count}
-{
-
-}
-
-
-void Semaphore::notify()
-{
-    std::lock_guard<std::mutex> lock(mMutex);
-    ++mCount;
-    mCv.notify_one();
-}
-
-
-//void Semaphore::wait() {
-//    std::unique_lock<std::mutex> lock{mMutex};
-//    mCv.wait(lock, [&]{ return mCount > 0; });
-//    --mCount;
-//}
-//
-//
-//bool Semaphore::try_wait() {
-//    std::lock_guard<std::mutex> lock{mMutex};
-//
-//    if (mCount > 0) {
-//        --mCount;
-//        return true;
-//    }
-//
-//    return false;
-//}
-
-
-int Semaphore::wait_for(std::chrono::milliseconds timeout)
-{
-    std::unique_lock<std::mutex> lock(mMutex);
-    int retCode = -1;
-
-    while (!mCount)
-    {
-        if (mCv.wait_for(lock, timeout) != std::cv_status::timeout)
-        {
-            retCode = 0;
-        }
-        else
-        {
-            break;
-        }
-    }
-
-    if (mCount)
-    {
-        retCode = 0;
-        --mCount;
-    }
-
-    return retCode;
-}
-
-
-//template<class Clock, class Duration>
-//bool Semaphore::wait_until(const std::chrono::time_point<Clock, Duration>& t) {
-//    std::unique_lock<std::mutex> lock{mMutex};
-//    auto finished = mCv.wait_until(lock, t, [&]{ return mCount > 0; });
-//
-//    if (finished)
-//        --mCount;
-//
-//    return finished;
-//}
-
-
 CosemClient::CosemClient()
     : mModemState(DISCONNECTED)
     , mCosemState(HDLC)
-    , mUseTcpGateway(false)
-    , mSerialHandle(0)
-    , mThread(0)
-    , mTerminate(false)
     , mReadIndex(0U)
-    , mDevice(NONE)
 {
 
 }
 
 
-void CosemClient::Initialize(Device device, const Modem &modem, const Cosem &cosem, const hdlc_t &hdlc, const std::vector<Object> &list)
+bool CosemClient::Initialize(const std::string &commFile, const std::string &objectsFile)
 {
-    mDevice = device;
-    mModem = modem;
-    mCosem = cosem;
-    mHdlc = hdlc;
-    mList = list;
+    bool ok = false;
+    mConf.hdlc.sender = HDLC_CLIENT;
 
-    if (mDevice != MODEM)
+    if (mTransport.Open())
     {
-        // Skip Modem state chart when no modem is in use
-        mModemState = CONNECTED;
+        mConf.ParseComFile(commFile, mTransport);
+
+        ok = mConf.ParseObjectsFile(objectsFile);
+        std::cout << "** Using LLS: " << mConf.cosem.lls << std::endl;
+        std::cout << "** Using HDLC address: " << mConf.hdlc.phy_address << std::endl;
+
+        if (mConf.modem.useModem)
+        {
+            std::cout << "** Using Modem device" << std::endl;
+            mModemState = DISCONNECTED;
+        }
+        else
+        {
+            // Skip Modem state chart when no modem is in use
+            mModemState = CONNECTED;
+        }
     }
     else
     {
-        std::cout << "** Using Modem device" << std::endl;
-        mModemState = DISCONNECTED;
+        printf("** Cannot open serial port.\r\n");
     }
-
-    pthread_create(&mThread, NULL, &CosemClient::thread_reader, this);
+    return ok;
 }
 
+void CosemClient::SetStartDate(const std::string &date)
+{
+    mConf.cosem.start_date = date;
+}
+
+void CosemClient::SetEndDate(const std::string &date)
+{
+    mConf.cosem.end_date = date;
+}
 
 void CosemClient::WaitForStop()
 {
-    mTerminate = true;
-    pthread_join(mThread, NULL);
-}
-
-
-bool CosemClient::WaitForData(std::string &data, int timeout)
-{
-    bool ok = false;
-    int ret = -1;
-
-    // loop until timeout
-    do {
-        ret = mSem.wait_for(std::chrono::seconds(timeout));
-    } while (ret != -1);
-
-
-    mMutex.lock();
-    data = mData;
-    mData.clear();
-    mMutex.unlock();
-
-    // Echo cancellation
-    if (data.compare(0, mSendCopy.size(), mSendCopy) == 0)
-    {
-        // remove echo from the string
-        data = data.substr(mSendCopy.size());
-    }
-
-    if (data.size() > 0)
-    {
-        ok = true;
-    }
-
-    return ok;
+    mTransport.WaitForStop();
 }
 
 
@@ -199,33 +88,21 @@ bool CosemClient::HdlcProcess(hdlc_t &hdlc, std::string &data, int timeout)
 {
     bool retCode = false;
     csm_array array;
+    std::string sendCopy = data;
 
-    csm_array_init(&array, (uint8_t*)&mHdlcBuf[0], cBufferSize, 0U, 0U);
+    csm_array_init(&mRcvArray, (uint8_t*)&mRcvBuffer[0], cBufferSize, 0U, 0U);
 
     bool loop = true;
     do
     {
-        bool notified = true;
-      //  int ret = mSem.wait_for(std::chrono::seconds(timeout));
-        std::unique_lock<std::mutex> lock(mMutex);
-        while (!mData.size())
-        {
-            if (mCv.wait_for(lock, std::chrono::seconds(timeout)) == std::cv_status::timeout)
-            {
-                notified = false;
-                break;
-            }
-        }
-
-        if (notified)
+        if (mTransport.WaitForData(data, timeout))
         {
             // We have something, add buffer
-            if (!csm_array_write_buff(&array, (const uint8_t*)mData.c_str(), mData.size()))
+            if (!csm_array_write_buff(&mRcvArray, (const uint8_t*)data.c_str(), data.size()))
             {
                 loop = false;
                 retCode = false;
             }
-            mData.clear();
 
             if (loop)
             {
@@ -240,7 +117,7 @@ bool CosemClient::HdlcProcess(hdlc_t &hdlc, std::string &data, int timeout)
 //                puts("\r\n");
 
                 // the frame seems correct, check echo
-                if (std::memcmp(mSendCopy.c_str(), ptr, mSendCopy.size()) == 0)
+                if (std::memcmp(sendCopy.c_str(), ptr, sendCopy.size()) == 0)
                 {
                     // remove echo from the string
                     csm_array_reader_jump(&array, size);
@@ -288,8 +165,8 @@ bool CosemClient::HdlcProcess(hdlc_t &hdlc, std::string &data, int timeout)
                                 // Send RR
                                 hdlc.sender = HDLC_CLIENT;
                                 hdlc.rrr = hdlc.sss + 1;
-                                size = hdlc_encode_rr(&hdlc, (uint8_t*)&mSendBuffer[0], cBufferSize);
-                                if (Send(std::string(&mSendBuffer[0], size), PRINT_HEX) < 0)
+                                size = hdlc_encode_rr(&hdlc, (uint8_t*)&mSndBuffer[0], cBufferSize);
+                                if (mTransport.Send(std::string(&mSndBuffer[0], size), PRINT_HEX) < 0)
                                 {
                                     retCode = false;
                                     loop = false; // quit
@@ -321,60 +198,19 @@ bool CosemClient::HdlcProcess(hdlc_t &hdlc, std::string &data, int timeout)
     return retCode;
 }
 
-void * CosemClient::Reader()
-{
-    printf("Reader thread started\r\n");
-
-    while (!mTerminate)
-    {
-        int ret = serial_read(mSerialHandle, &mRcvBuffer[0], cBufferSize, 10);
-
-        if (ret > 0)
-        {
-            printf("<==== Got data: %d bytes: ", ret);
-            std::string data(&mRcvBuffer[0], ret);
-
-            Printer(data.c_str(), data.size(), PRINT_HEX);
-
-            puts("\r\n");
-
-            // Add data
-            mMutex.lock();
-            mData += data;
-            mMutex.unlock();
-
-            mCv.notify_one();
-
-            // Signal new data available
-        //    mSem.notify();
-        }
-        else if (ret == 0)
-        {
-            puts("Still waiting for data...\r\n");
-        }
-        else
-        {
-            puts("Serial read error, exiting...\r\n");
-            mTerminate = true;
-        }
-    }
-
-    return NULL;
-}
-
 int CosemClient::Test()
 {
     int ret = -1;
 
-    if (Send("AT\r\n", PRINT_RAW) > 0)
+    if (mTransport.Send("AT\r\n", PRINT_RAW) > 0)
     {
         std::string data;
 
         // Wait 2 seconds
-        if (WaitForData(data, 2))
+        if (mTransport.WaitForData(data, 2))
         {
             ret = data.size();
-            Printer(data.c_str(), data.size(), PRINT_RAW);
+            Transport::Printer(data.c_str(), data.size(), PRINT_RAW);
         }
     }
     return ret;
@@ -388,14 +224,14 @@ int CosemClient::Dial(const std::string &phone)
 
     std::string dialRequest = std::string("ATD") + phone + std::string("\r\n");
 
-    if (Send(dialRequest, PRINT_RAW))
+    if (mTransport.Send(dialRequest, PRINT_RAW))
     {
         std::string data;
 
-        if (WaitForData(data, 60))
+        if (mTransport.WaitForData(data, 60))
         {
             ret = data.size();
-            Printer(data.c_str(), data.size(), PRINT_RAW);
+            Transport::Printer(data.c_str(), data.size(), PRINT_RAW);
         }
     }
 
@@ -406,9 +242,10 @@ int CosemClient::ConnectHdlc()
 {
     int ret = -1;
 
-    int size = hdlc_encode_snrm(&mHdlc, (uint8_t *)&mSendBuffer[0], cBufferSize);
+    int size = hdlc_encode_snrm(&mHdlc, (uint8_t *)&mSndBuffer[0], cBufferSize);
 
-    if (Send(std::string(&mSendBuffer[0], size), PRINT_HEX))
+    std::string snrmData(&mSndBuffer[0], size);
+    if (mTransport.Send(snrmData, PRINT_HEX))
     {
         std::string data;
         hdlc_t hdlc;
@@ -416,7 +253,7 @@ int CosemClient::ConnectHdlc()
         if (HdlcProcess(hdlc, data, 4))
         {
             ret = data.size();
-            Printer(data.c_str(), data.size(), PRINT_HEX);
+            Transport::Printer(data.c_str(), data.size(), PRINT_HEX);
 
             // Decode UA
             ret = hdlc_decode_info_field(&hdlc, (const uint8_t *)data.c_str(), data.size());
@@ -547,10 +384,10 @@ int CosemClient::ReadObject(const Object &obj)
 
     if (allowSelectiveAccess)
     {
-        if (mCosem.start_date.size() > 0)
+        if (mConf.cosem.start_date.size() > 0)
         {
             // Try to decode start date
-            std::stringstream ss(mCosem.start_date);
+            std::stringstream ss(mConf.cosem.start_date);
             ss >> std::get_time(&tm_start, "%Y-%m-%d.%H:%M:%S");
 
             if (ss.fail())
@@ -565,9 +402,9 @@ int CosemClient::ReadObject(const Object &obj)
             allowSelectiveAccess = false;
         }
 
-        if (mCosem.start_date.size() > 0)
+        if (mConf.cosem.start_date.size() > 0)
         {
-            std::stringstream ss2(mCosem.end_date);
+            std::stringstream ss2(mConf.cosem.end_date);
             ss2 >> std::get_time(&tm_end, "%Y-%m-%d.%H:%M:%S");
             if (ss2.fail())
             {
@@ -623,7 +460,7 @@ int CosemClient::ReadObject(const Object &obj)
 
                 if (HdlcProcess(hdlc, data, 5))
                 {
-                    Printer(data.c_str(), data.size(), PRINT_HEX);
+                    Transport::Printer(data.c_str(), data.size(), PRINT_HEX);
                     csm_array partial;
                     csm_array_init(&partial, &mScratch[0], cBufferSize, 0, 0);
 
@@ -684,12 +521,12 @@ int CosemClient::ReadObject(const Object &obj)
                                         {
                                             mHdlc.sss++;
                                         }
-                                        int send_size = hdlc_encode_data(&hdlc, (uint8_t *)&mSendBuffer[0], cBufferSize, &mScratch[0], csm_array_written(&partial));
+                                        int send_size = hdlc_encode_data(&hdlc, (uint8_t *)&mSndBuffer[0], cBufferSize, &mScratch[0], csm_array_written(&partial));
 
-                                        std::string request((char *)&mSendBuffer[0], send_size);
+                                        std::string request((char *)&mSndBuffer[0], send_size);
 
                                         printf("** Sending ReadProfile next...\r\n");
-                                        if (!Send(request, PRINT_HEX))
+                                        if (!mTransport.Send(request, PRINT_HEX))
                                         {
                                             puts("Cannot send next data\r\n");
                                             loop = false;
@@ -749,53 +586,6 @@ int CosemClient::ReadObject(const Object &obj)
     return ret;
 }
 
-
-
-bool CosemClient::Open(const std::string &comport, uint32_t baudrate)
-{
-    bool ret = false;
-
-    std::cout << "** Opening serial port " << comport << " at " << baudrate << std::endl;
-    mSerialHandle = serial_open(comport.c_str());
-
-    if (mSerialHandle >= 0)
-    {
-        if (serial_setup(mSerialHandle, baudrate) == 0)
-        {
-            ret = true;
-        }
-    }
-    return ret;
-}
-
-
-
-
-int CosemClient::Send(const std::string &data, PrintFormat format)
-{
-    int ret = -1;
-
-    // Print request
-    puts("====> Sending: ");
-    Printer(data.c_str(), data.size(), format);
-    puts("\r\n");
-
-    if (mUseTcpGateway)
-    {
-        // TODO
-      //  socket.write(data);
-      //  socket.flush();
-    }
-    else
-    {
-        mSendCopy = data;
-        ret = serial_write(mSerialHandle, data.c_str(), data.size());
-    }
-
-    return ret;
-}
-
-
 bool  CosemClient::PerformCosemRead()
 {
     bool ret = false;
@@ -832,9 +622,9 @@ bool  CosemClient::PerformCosemRead()
             break;
         case ASSOCIATED:
         {
-            if (mReadIndex < mList.size())
+            if (mReadIndex < mConf.list.size())
             {
-                Object obj = mList[mReadIndex];
+                Object obj = mConf.list[mReadIndex];
 
                 (void) ReadObject(obj);
                 ret = true;
@@ -878,7 +668,7 @@ bool CosemClient::PerformTask()
 
         case DIAL:
         {
-            if (Dial(mModem.phone) > 0)
+            if (Dial(mConf.modem.phone) > 0)
             {
                printf("** Modem dial success!\r\n");
                ret = true;
