@@ -33,8 +33,7 @@ public:
 
     void WaitForStop();
 
-    int Test();
-    int Dial(const std::string &phone);
+    bool SendModem(const std::string &command, const std::string &expected);
 
     bool PerformTask();
 

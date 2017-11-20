@@ -238,44 +238,41 @@ bool CosemClient::HdlcProcess(const std::string &send, std::string &rcv, int tim
     return retCode;
 }
 
-int CosemClient::Test()
+
+bool CosemClient::SendModem(const std::string &command, const std::string &expected)
 {
-    int ret = -1;
+    bool retCode = false;
 
-    if (mTransport.Send("AT\r\n", PRINT_RAW) > 0)
+    if (mTransport.Send(command, PRINT_RAW))
     {
-        std::string data;
+        std::string modemReply;
 
-        // Wait 2 seconds
-        if (mTransport.WaitForData(data, 2))
-        {
-            ret = data.size();
-            Transport::Printer(data.c_str(), data.size(), PRINT_RAW);
+        bool loop = true;
+        do {
+            std::string data;
+            if (mTransport.WaitForData(data, 60))
+            {
+                Transport::Printer(data.c_str(), data.size(), PRINT_RAW);
+                modemReply += data;
+
+                if (modemReply.find(expected) != std::string::npos)
+                {
+                    loop = false;
+                    retCode = true;
+                }
+            }
+            else
+            {
+                loop = false;
+                retCode = false;
+            }
         }
-    }
-    return ret;
-}
-
-int CosemClient::Dial(const std::string &phone)
-{
-    int ret = -1;
-
-    std::cout << "** Dial: " << phone << std::endl;
-
-    std::string dialRequest = std::string("ATD") + phone + std::string("\r\n");
-
-    if (mTransport.Send(dialRequest, PRINT_RAW))
-    {
-        std::string data;
-
-        if (mTransport.WaitForData(data, 60))
-        {
-            ret = data.size();
-            Transport::Printer(data.c_str(), data.size(), PRINT_RAW);
-        }
+        while (loop);
     }
 
-    return ret;
+    std::this_thread::sleep_for(std::chrono::seconds(2U));
+
+    return retCode;
 }
 
 int CosemClient::ConnectHdlc()
@@ -731,7 +728,7 @@ bool CosemClient::PerformTask()
     {
         case DISCONNECTED:
         {
-            if (Test() > 0)
+            if (SendModem("AT\r\n", "OK") > 0)
             {
                 printf("** Modem test success!\r\n");
 
@@ -748,7 +745,9 @@ bool CosemClient::PerformTask()
 
         case DIAL:
         {
-            if (Dial(mConf.modem.phone) > 0)
+            std::cout << "** Dial: " << mConf.modem.phone << std::endl;
+            std::string dialRequest = std::string("ATD") + mConf.modem.phone + std::string("\r\n");
+            if (SendModem(dialRequest, "CONNECT"))
             {
                printf("** Modem dial success!\r\n");
                ret = true;
