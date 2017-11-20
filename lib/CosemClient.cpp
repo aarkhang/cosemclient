@@ -590,7 +590,9 @@ int CosemClient::ReadObject(const Object &obj)
                                     {
                                         std::cout << "** Block of data of size: " << size << std::endl;
 
+                                        gPrinter.Start();
                                         csm_axdr_decode_tags(&app_array, AxdrData);
+                                        gPrinter.End();
                                         std::cout << gPrinter.Get() << std::endl;
                                     }
 
