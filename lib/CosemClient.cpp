@@ -5,6 +5,8 @@
 #include <ctime>
 #include <cstring>
 #include <cstdlib>
+#include <fstream>
+
 
 #include "CosemClient.h"
 #include "serial.h"
@@ -593,7 +595,16 @@ int CosemClient::ReadObject(const Object &obj)
                                         gPrinter.Start();
                                         csm_axdr_decode_tags(&app_array, AxdrData);
                                         gPrinter.End();
-                                        std::cout << gPrinter.Get() << std::endl;
+
+                                        std::string xml_data = gPrinter.Get();
+                                        std::cout << xml_data << std::endl;
+
+                                        std::string dirName = Util::ExecutablePath() + Util::DIR_SEPARATOR + Util::CurrentDateTime("%F_%T");
+                                        std::string fileName = dirName + Util::DIR_SEPARATOR + obj.name;
+                                        std::ofstream out(fileName);
+                                        out << xml_data;
+                                        out.close();
+
                                     }
 
                                   //  print_hex((const char *)&mAppBuffer[0], csm_array_written(&array));
