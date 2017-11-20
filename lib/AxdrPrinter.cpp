@@ -302,10 +302,10 @@ std::string AxdrPrinter::Get()
     return mStream.str();
 }
 
-void AxdrPrinter::Start()
+void AxdrPrinter::Start(const std::string &infos)
 {
     mStream.str("");
-    mStream  << "<Root>" << std::endl;
+    mStream << "<Root " << infos << ">" << std::endl;
 }
 
 void AxdrPrinter::End()

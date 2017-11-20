@@ -425,7 +425,6 @@ std::string CosemClient::EncapsulateRequest(csm_array *request)
     return request_data;
 }
 
-
 int CosemClient::ReadObject(const Object &obj)
 {
     int ret = 1;
@@ -523,12 +522,13 @@ int CosemClient::ReadObject(const Object &obj)
 
     if (ret && svc_get_request_encoder(&request, &scratch_array))
     {
-        printf("** Sending ReadProfile request...\r\n");
+        std::cout << "** Sending request for object: " << obj.name << std::endl;
 
         std::string request_data = EncapsulateRequest(&scratch_array);
         std::string data;
         csm_response response;
         bool loop = true;
+        bool dump = false;
 
         do
         {
@@ -562,6 +562,7 @@ int CosemClient::ReadObject(const Object &obj)
                             {
                                 // We have the data
                                 loop = false;
+                                dump = true;
                             }
                             else if (response.type == SVC_GET_RESPONSE_WITH_DATABLOCK)
                             {
@@ -586,28 +587,12 @@ int CosemClient::ReadObject(const Object &obj)
                                 {
                                     puts("No more data\r\n");
                                     loop = false;
-
                                     uint32_t size = 0U;
                                     if (csm_axdr_decode_block(&app_array, &size))
                                     {
                                         std::cout << "** Block of data of size: " << size << std::endl;
-
-                                        gPrinter.Start();
-                                        csm_axdr_decode_tags(&app_array, AxdrData);
-                                        gPrinter.End();
-
-                                        std::string xml_data = gPrinter.Get();
-                                        std::cout << xml_data << std::endl;
-
-                                        std::string dirName = Util::ExecutablePath() + Util::DIR_SEPARATOR + Util::CurrentDateTime("%F_%T");
-                                        std::string fileName = dirName + Util::DIR_SEPARATOR + obj.name;
-                                        std::ofstream out(fileName);
-                                        out << xml_data;
-                                        out.close();
-
+                                        dump = true;
                                     }
-
-                                  //  print_hex((const char *)&mAppBuffer[0], csm_array_written(&array));
                                 }
                             }
                             else
@@ -641,6 +626,40 @@ int CosemClient::ReadObject(const Object &obj)
             }
         }
         while(loop);
+
+        if (dump)
+        {
+
+            std::string infos = "Object=\"" + obj.name + "\"";
+            gPrinter.Start(infos);
+            csm_axdr_decode_tags(&app_array, AxdrData);
+            gPrinter.End();
+
+            std::string xml_data = gPrinter.Get();
+            std::cout << xml_data << std::endl;
+
+            std::string dirName = Util::ExecutablePath() + Util::DIR_SEPARATOR + Util::CurrentDateTime("%F_%H:%M");
+            std::string fileName = dirName + Util::DIR_SEPARATOR + obj.name + ".xml";
+
+            std::cout << "Dumping into file: " << fileName << std::endl;
+
+            std::fstream f;
+
+            Util::Mkdir(dirName);
+            f.open(fileName, std::ios_base::out | std::ios_base::binary  | std::ios_base::app);
+
+            if (f.is_open())
+            {
+
+                f << xml_data << std::endl;
+                f.close();
+            }
+            else
+            {
+                std::cout << "Cannot open file!" << std::endl;
+            }
+          //  print_hex((const char *)&mAppBuffer[0], csm_array_written(&array));
+        }
 
     }
 

@@ -26,7 +26,7 @@ public:
         mLevels.clear();
     }
 
-    void Start();
+    void Start(const std::string &infos = "");
     void End();
     void Append(uint8_t type, uint32_t size, uint8_t *data);
     std::string Get();
