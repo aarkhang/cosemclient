@@ -56,10 +56,14 @@ private:
     static const uint32_t cAppBufferSize = 200U*1024U;
     uint8_t mAppBuffer[cAppBufferSize];
 
+    static const uint32_t cSelectiveAccessBufferSize = 256U;
+    uint8_t mSelectiveAccessBuff[cSelectiveAccessBufferSize];
+
     std::uint32_t mReadIndex;
     Configuration mConf;
     Transport mTransport;
     csm_asso_state mAssoState;
+    uint32_t mModemTimeout;
 
     int ConnectHdlc();
     bool HdlcProcess(const std::string &send, std::string &rcv, int timeout);

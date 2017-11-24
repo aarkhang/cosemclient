@@ -17,6 +17,7 @@
 #include "csm_array.h"
 #include "csm_services.h"
 #include "csm_axdr_codec.h"
+#include "clock.h"
 
 int StringToBin(const std::string &in, char *out)
 {
@@ -35,6 +36,7 @@ CosemClient::CosemClient()
     : mModemState(DISCONNECTED)
     , mCosemState(HDLC)
     , mReadIndex(0U)
+    , mModemTimeout(70U)
 {
 
 }
@@ -250,7 +252,7 @@ bool CosemClient::SendModem(const std::string &command, const std::string &expec
         bool loop = true;
         do {
             std::string data;
-            if (mTransport.WaitForData(data, 60))
+            if (mTransport.WaitForData(data, mModemTimeout))
             {
                 Transport::Printer(data.c_str(), data.size(), PRINT_RAW);
                 modemReply += data;
@@ -422,6 +424,30 @@ std::string CosemClient::EncapsulateRequest(csm_array *request)
     return request_data;
 }
 
+
+void DateToCosem(std::tm &date, csm_array *array)
+{
+    clk_datetime_t clk;
+
+    // 1. Transform standard date into cosem format
+
+    clk.date.year = date.tm_year + 1900;
+    clk.date.month = date.tm_mon + 1;
+    clk.date.day = date.tm_mday;
+    clk.date.dow = 0xFFU; // not specified
+    clk.time.hour = date.tm_hour;
+    clk.time.minute = date.tm_min;
+    clk.time.second = date.tm_sec;
+    clk.time.hundredths = 0U;
+
+    clk.deviation = static_cast<std::int16_t>(0x8000);
+    clk.status = 0xFFU;
+
+    // 2. Serialize
+    clk_datetime_to_cosem(&clk, array);
+}
+
+
 int CosemClient::ReadObject(const Object &obj)
 {
     int ret = 1;
@@ -456,7 +482,7 @@ int CosemClient::ReadObject(const Object &obj)
             allowSelectiveAccess = false;
         }
 
-        if (mConf.cosem.start_date.size() > 0)
+        if (mConf.cosem.end_date.size() > 0)
         {
             std::stringstream ss2(mConf.cosem.end_date);
             ss2 >> std::get_time(&tm_end, "%Y-%m-%d.%H:%M:%S");
@@ -480,17 +506,43 @@ int CosemClient::ReadObject(const Object &obj)
     csm_array app_array;
     csm_array_init(&app_array, &mAppBuffer[0], cAppBufferSize, 0, 0);
 
+
     csm_request request;
 
     if (allowSelectiveAccess)
     {
-        request.db_request.access.use_sel_access = TRUE;
-        //Read data from the meter. FIXME: generate selective access
-        // csm_client_encode_selective_access_by_range(csm_array *array, csm_object_t *restricting_object, csm_array *start, csm_array *end)
+        // Setup selective access options
+        request.db_request.use_sel_access = TRUE;
+        csm_array_init(&request.db_request.access_params, &mSelectiveAccessBuff[0], cSelectiveAccessBufferSize, 0, 0);
+        uint8_t clockBuffStart[12];
+        uint8_t clockBuffEnd[12];
+        csm_array clockStartArray;
+        csm_array clockEndArray;
+
+        csm_array_init(&clockStartArray, &clockBuffStart[0], 12, 0, 0);
+        csm_array_init(&clockEndArray, &clockBuffEnd[0], 12, 0, 0);
+
+
+        DateToCosem(tm_start, &clockStartArray);
+        DateToCosem(tm_end, &clockEndArray);
+
+        csm_object_t clockObj;
+
+        clockObj.class_id = 8;
+        clockObj.data_index = 0;
+        clockObj.id = 2;
+        clockObj.obis.A = 0;
+        clockObj.obis.B = 0;
+        clockObj.obis.C = 1;
+        clockObj.obis.D = 0;
+        clockObj.obis.E = 0;
+        clockObj.obis.F = 255;
+
+        csm_client_encode_selective_access_by_range(&request.db_request.access_params, &clockObj, &clockStartArray, &clockEndArray);
     }
     else
     {
-        request.db_request.access.use_sel_access = FALSE;
+        request.db_request.use_sel_access = FALSE;
     }
 
     request.type = SVC_GET_REQUEST_NORMAL;
