@@ -654,6 +654,14 @@ int CosemClient::ReadObject(const Object &obj)
                         {
                             std::cout << "** Data access result: " << ResultToString(response.access_result) << std::endl;
                             loop = false;
+
+                            // Try to save work anyway
+                            uint32_t size = 0U;
+                            if (csm_axdr_decode_block(&app_array, &size))
+                            {
+                                std::cout << "** Block of data of size: " << size << std::endl;
+                                dump = true;
+                            }
                         }
                     }
                     else
