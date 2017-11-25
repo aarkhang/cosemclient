@@ -33,7 +33,7 @@ public:
 
 private:
     void PrintIndent();
-    static std::string DataToString(uint8_t type, uint32_t size, uint8_t *data);
+    static std::string DataToString(uint8_t type, uint32_t size, uint8_t *data, std::string &hint);
 
     std::vector<Element> mLevels;
     std::stringstream mStream;

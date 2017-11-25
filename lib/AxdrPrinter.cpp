@@ -1,6 +1,5 @@
 
 #include "os_util.h"
-#include "hdlc.h"
 #include "csm_axdr_codec.h"
 #include "csm_array.h"
 #include "JsonWriter.h"
@@ -63,7 +62,7 @@ static const tag_t units[] = {
 
 static const uint32_t units_size = sizeof(units) / sizeof(units[0]);
 
-std::string TagName(uint8_t tag, uint32_t size)
+std::string TagName(uint8_t tag)
 {
     std::string name = "UnkownTag";
 
@@ -72,18 +71,6 @@ std::string TagName(uint8_t tag, uint32_t size)
         if (tags[i].tag == tag)
         {
             name = tags[i].name;
-
-            if (name == "OctetString")
-            {
-                if (size == 6)
-                {
-                    name = "OBIS";
-                }
-                if (size == 12)
-                {
-                    name = "DateTime";
-                }
-            }
             break;
         }
     }
@@ -94,7 +81,7 @@ std::string UnitName(uint8_t tag)
 {
     std::stringstream ss;
 
-    ss << "UnknownUnit: " << (int)tag;
+    ss << "UnknownUnit";
 
     std::string name = ss.str();
 
@@ -157,9 +144,23 @@ void AxdrPrinter::PrintIndent()
     }
 }
 
-std::string AxdrPrinter::DataToString(uint8_t type, uint32_t size, uint8_t *data)
+std::string AxdrPrinter::DataToString(uint8_t type, uint32_t size, uint8_t *data, std::string &hint)
 {
     std::stringstream ss;
+    std::stringstream ss_hint;
+
+    if (type == AXDR_TAG_OCTETSTRING)
+    {
+        if (size == 6)
+        {
+            ss_hint << "OBIS";
+        }
+        if (size == 12)
+        {
+        	ss_hint << "DateTime";
+        }
+    }
+
     switch (type)
     {
         case AXDR_TAG_NULL:
@@ -191,6 +192,8 @@ std::string AxdrPrinter::DataToString(uint8_t type, uint32_t size, uint8_t *data
                     {
                         ss << "0";
                     }
+
+                    ss << ";";
                 }
             }
             break;
@@ -218,22 +221,21 @@ std::string AxdrPrinter::DataToString(uint8_t type, uint32_t size, uint8_t *data
         }
         case AXDR_TAG_OCTETSTRING:
         {
-            if (size == 6)
-            {
-                // Maybe an OBIS code
-                for (uint32_t i = 0U; i < size; i++)
-                {
-                    ss << static_cast<unsigned long>(data[i]);
-                    if (i < (size-1))
-                    {
-                        ss << ".";
-                    }
-                }
-            }
-            else if (size == 12)
+        	for (uint32_t i = 0U; i < size; i++)
+			{
+				ss << static_cast<unsigned long>(data[i]);
+				if (i < (size-1))
+				{
+					ss << ";";
+				}
+			}
+
+        	ss_hint << "(";
+
+            if (size == 12)
             {
                 // Maybe a DateTime
-                ss << DateFromCosem(size, data);
+            	ss_hint << DateFromCosem(size, data);
             }
             else
             {
@@ -242,9 +244,12 @@ std::string AxdrPrinter::DataToString(uint8_t type, uint32_t size, uint8_t *data
                 {
                     byte_to_hex(data[i], &out[0]);
 
-                    ss << out[0] << out[1];
+                    ss_hint << out[0] << out[1];
                 }
             }
+
+            ss_hint << ")";
+
             break;
         }
         case AXDR_TAG_INTEGER8:
@@ -262,10 +267,10 @@ std::string AxdrPrinter::DataToString(uint8_t type, uint32_t size, uint8_t *data
         case AXDR_TAG_UNSIGNED8:
         case AXDR_TAG_ENUM:
         {
-            //ss << static_cast<int16_t>(data[0]);
+            ss << static_cast<uint16_t>(data[0]);
 
             // maybe a unit
-            ss << UnitName(data[0]);
+            ss_hint << "(" << UnitName(data[0]) << ")" ;
 
             break;
         }
@@ -294,6 +299,8 @@ std::string AxdrPrinter::DataToString(uint8_t type, uint32_t size, uint8_t *data
             break;
     }
 
+    hint = ss_hint.str();
+
     return ss.str();
 }
 
@@ -302,10 +309,10 @@ std::string AxdrPrinter::Get()
     return mStream.str();
 }
 
-void AxdrPrinter::Start(const std::string &infos)
+void AxdrPrinter::Start()
 {
     mStream.str("");
-    mStream << "<Root " << infos << ">" << std::endl;
+    mStream  << "<Root>" << std::endl;
 }
 
 void AxdrPrinter::End()
@@ -315,7 +322,7 @@ void AxdrPrinter::End()
 
 void AxdrPrinter::Append(uint8_t type, uint32_t size, uint8_t *data)
 {
-    std::string name = TagName(type, size);
+    std::string name = TagName(type);
 
     PrintIndent();
 
@@ -339,7 +346,17 @@ void AxdrPrinter::Append(uint8_t type, uint32_t size, uint8_t *data)
     }
     else
     {
-        mStream  << "<" << name << " value=\"" << DataToString(type, size, data) << "\" />" << std::endl;
+    	std::string hint;
+    	std::string value = DataToString(type, size, data, hint);
+
+        mStream << "<" << name << " value=\"" << value;
+
+        if (hint.size() > 0)
+        {
+        	mStream << "\" hint=\"" << hint;
+        }
+
+        mStream << "\" />" << std::endl;
         if (mLevels.size() > 0)
         {
             mLevels.back().counter++;
@@ -352,7 +369,6 @@ void AxdrPrinter::Append(uint8_t type, uint32_t size, uint8_t *data)
         if (mLevels.back().counter >= mLevels.back().size)
         {
             uint8_t prev_type = mLevels.back().type;
-            uint8_t prev_size = mLevels.back().size;
 
             mLevels.pop_back();
 
@@ -360,7 +376,7 @@ void AxdrPrinter::Append(uint8_t type, uint32_t size, uint8_t *data)
                 (prev_type == AXDR_TAG_STRUCTURE))
             {
                 PrintIndent();
-                mStream  << "</" << TagName(prev_type, prev_size) << ">" << std::endl;
+                mStream  << "</" << TagName(prev_type) << ">" << std::endl;
             }
         }
         else
