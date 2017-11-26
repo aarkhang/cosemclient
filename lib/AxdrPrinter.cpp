@@ -1,3 +1,13 @@
+/**
+ * AXDR printer to several output formats (currently XML)
+ *
+ * Copyright (c) 2016, Anthony Rabine
+ * All rights reserved.
+ *
+ * This software may be modified and distributed under the terms of the BSD license.
+ * See LICENSE.txt for more details.
+ *
+ */
 
 #include "os_util.h"
 #include "csm_axdr_codec.h"
@@ -309,10 +319,10 @@ std::string AxdrPrinter::Get()
     return mStream.str();
 }
 
-void AxdrPrinter::Start()
+void AxdrPrinter::Start(const std::string &infos)
 {
     mStream.str("");
-    mStream  << "<Root>" << std::endl;
+    mStream  << "<Root" << infos <<  ">" << std::endl;
 }
 
 void AxdrPrinter::End()

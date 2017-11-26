@@ -1,3 +1,13 @@
+/**
+ * Cosem client entry point
+ *
+ * Copyright (c) 2016, Anthony Rabine
+ * All rights reserved.
+ *
+ * This software may be modified and distributed under the terms of the BSD license.
+ * See LICENSE.txt for more details.
+ *
+ */
 
 #include <iostream>
 #include "JsonReader.h"
@@ -30,21 +40,22 @@ int main(int argc, char **argv)
 
     if (argc >= 3)
     {
-        std::string commFile(argv[1]); // First file is the communication parameters
+        std::string meterFile(argv[1]); // First file is the communication parameters
         std::string objectsFile(argv[2]); // Second is the objects to retrieve
-
-        if (argc >= 4)
-        {
-            client.SetStartDate(std::string(argv[3])); // startDate for the profiles
-        }
+        std::string commFile(argv[3]); // Second is the objects to retrieve
 
         if (argc >= 5)
         {
-            client.SetEndDate(std::string(argv[4])); // endDate for the profiles
+            client.SetStartDate(std::string(argv[4])); // startDate for the profiles
+        }
+
+        if (argc >= 6)
+        {
+            client.SetEndDate(std::string(argv[5])); // endDate for the profiles
         }
 
         // Before application, test connectivity
-        ok = client.Initialize(commFile, objectsFile);
+        ok = client.Initialize(commFile, objectsFile, meterFile);
 
         while(ok)
         {

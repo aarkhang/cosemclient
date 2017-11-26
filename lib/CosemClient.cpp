@@ -1,3 +1,13 @@
+/**
+ * Cosem client engine
+ *
+ * Copyright (c) 2016, Anthony Rabine
+ * All rights reserved.
+ *
+ * This software may be modified and distributed under the terms of the BSD license.
+ * See LICENSE.txt for more details.
+ *
+ */
 
 #include <Util.h>
 #include <iostream>
@@ -42,7 +52,7 @@ CosemClient::CosemClient()
 }
 
 
-bool CosemClient::Initialize(const std::string &commFile, const std::string &objectsFile)
+bool CosemClient::Initialize(const std::string &commFile, const std::string &objectsFile, const std::string &meterFile)
 {
     bool ok = false;
 
@@ -52,8 +62,9 @@ bool CosemClient::Initialize(const std::string &commFile, const std::string &obj
     mConf.hdlc.sender = HDLC_CLIENT;
 
     mConf.ParseComFile(commFile, params);
+    mConf.ParseObjectsFile(objectsFile);
+    mConf.ParseMeterFile(meterFile);
 
-    ok = mConf.ParseObjectsFile(objectsFile);
     std::cout << "** Using LLS: " << mConf.cosem.lls << std::endl;
     std::cout << "** Using HDLC address: " << mConf.hdlc.phy_address << std::endl;
 
@@ -695,7 +706,7 @@ int CosemClient::ReadObject(const Object &obj)
             std::string xml_data = gPrinter.Get();
             std::cout << xml_data << std::endl;
 
-            std::string dirName = Util::ExecutablePath() + Util::DIR_SEPARATOR + Util::CurrentDateTime("%F_%H:%M");
+            std::string dirName = mConf.meterId;
             std::string fileName = dirName + Util::DIR_SEPARATOR + obj.name + ".xml";
 
             std::cout << "Dumping into file: " << fileName << std::endl;

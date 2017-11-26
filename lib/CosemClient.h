@@ -1,5 +1,16 @@
-#ifndef EXAMPLE_COSEM_CLIENT_H
-#define EXAMPLE_COSEM_CLIENT_H
+/**
+ * Cosem client engine
+ *
+ * Copyright (c) 2016, Anthony Rabine
+ * All rights reserved.
+ *
+ * This software may be modified and distributed under the terms of the BSD license.
+ * See LICENSE.txt for more details.
+ *
+ */
+
+#ifndef COSEM_CLIENT_H
+#define COSEM_CLIENT_H
 
 #include <unistd.h>
 #include <cstdint>
@@ -26,7 +37,7 @@ class CosemClient
 public:
     CosemClient();
 
-    bool Initialize(const std::string &commFile, const std::string &objectsFile);
+    bool Initialize(const std::string &commFile, const std::string &objectsFile, const std::string &meterFile);
 
     void SetStartDate(const std::string &date);
     void SetEndDate(const std::string &date);
@@ -74,4 +85,4 @@ private:
 
 };
 
-#endif // EXAMPLE_COSEM_CLIENT_H
+#endif // COSEM_CLIENT_H

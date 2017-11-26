@@ -1,8 +1,12 @@
-/*
- * Configuration.h
+/**
+ * Configuration file for Cosem client engine
  *
- *  Created on: 12 nov. 2017
- *      Author: anthony
+ * Copyright (c) 2016, Anthony Rabine
+ * All rights reserved.
+ *
+ * This software may be modified and distributed under the terms of the BSD license.
+ * See LICENSE.txt for more details.
+ *
  */
 
 #ifndef CONFIGURATION_H_
@@ -82,11 +86,13 @@ struct Configuration
     Cosem cosem;
     hdlc_t hdlc;
     std::vector<Object> list;
+    std::string meterId;
 
     Configuration();
 
+    void ParseMeterFile(const std::string &file);
     void ParseComFile(const std::string &file, Transport::Params &comm);
-    bool ParseObjectsFile(const std::string &file);
+    void ParseObjectsFile(const std::string &file);
 };
 
 

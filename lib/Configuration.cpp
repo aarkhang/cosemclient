@@ -1,10 +1,13 @@
-/*
- * Configuration.cpp
+/**
+ * Configuration file for Cosem client engine
  *
- *  Created on: 12 nov. 2017
- *      Author: anthony
+ * Copyright (c) 2016, Anthony Rabine
+ * All rights reserved.
+ *
+ * This software may be modified and distributed under the terms of the BSD license.
+ * See LICENSE.txt for more details.
+ *
  */
-
 
 #include <iostream>
 #include <cstdint>
@@ -14,6 +17,68 @@
 Configuration::Configuration()
 {
 
+}
+
+// Very tolerant, use default values of classes if corresponding parameter is not found
+void Configuration::ParseMeterFile(const std::string &file)
+{
+    JsonReader reader;
+    JsonValue json;
+
+    if (reader.ParseFile(json, file))
+    {
+    	JsonValue meterObj = json.FindValue("meter");
+		if (meterObj.IsObject())
+		{
+			JsonValue val = meterObj.FindValue("id");
+			if (val.IsString())
+			{
+				meterId = val.GetString();
+			}
+		}
+
+        JsonValue cosemObj = json.FindValue("cosem");
+        if (cosemObj.IsObject())
+        {
+            JsonValue val = cosemObj.FindValue("lls");
+            if (val.IsString())
+            {
+                cosem.lls = val.GetString();
+            }
+        }
+
+        JsonValue hdlcObj = json.FindValue("hdlc");
+        if (hdlcObj.IsObject())
+        {
+            JsonValue val = hdlcObj.FindValue("phy_addr");
+            if (val.IsInteger())
+            {
+                hdlc.phy_address = static_cast<unsigned int>(val.GetInteger());
+            }
+
+            val = hdlcObj.FindValue("logical_device");
+            if (val.IsInteger())
+            {
+                hdlc.logical_device = static_cast<unsigned int>(val.GetInteger());
+            }
+
+            val = hdlcObj.FindValue("address_size");
+            if (val.IsInteger())
+            {
+                hdlc.addr_len = static_cast<unsigned int>(val.GetInteger());
+            }
+
+            val = hdlcObj.FindValue("client");
+            if (val.IsInteger())
+            {
+                hdlc.client_addr = static_cast<unsigned int>(val.GetInteger());
+            }
+        }
+    }
+    else
+    {
+        std::cout << "** Error opening file: " << file << std::endl;
+    }
 }
 
 
@@ -55,16 +120,6 @@ void Configuration::ParseComFile(const std::string &file, Transport::Params &com
             }
         }
 
-        JsonValue cosemObj = json.FindValue("cosem");
-        if (cosemObj.IsObject())
-        {
-            JsonValue val = cosemObj.FindValue("lls");
-            if (val.IsString())
-            {
-                cosem.lls = val.GetString();
-            }
-        }
-
         JsonValue portObj = json.FindValue("serial");
         if (portObj.IsObject())
         {
@@ -79,34 +134,6 @@ void Configuration::ParseComFile(const std::string &file, Transport::Params &com
                 }
             }
         }
-
-        JsonValue hdlcObj = json.FindValue("hdlc");
-        if (hdlcObj.IsObject())
-        {
-            JsonValue val = hdlcObj.FindValue("phy_addr");
-            if (val.IsInteger())
-            {
-                hdlc.phy_address = static_cast<unsigned int>(val.GetInteger());
-            }
-
-            val = hdlcObj.FindValue("logical_device");
-            if (val.IsInteger())
-            {
-                hdlc.logical_device = static_cast<unsigned int>(val.GetInteger());
-            }
-
-            val = hdlcObj.FindValue("address_size");
-            if (val.IsInteger())
-            {
-                hdlc.addr_len = static_cast<unsigned int>(val.GetInteger());
-            }
-
-            val = hdlcObj.FindValue("client");
-            if (val.IsInteger())
-            {
-                hdlc.client_addr = static_cast<unsigned int>(val.GetInteger());
-            }
-        }
     }
     else
     {
@@ -115,11 +142,10 @@ void Configuration::ParseComFile(const std::string &file, Transport::Params &com
 
 }
 
-bool Configuration::ParseObjectsFile(const std::string &file)
+void Configuration::ParseObjectsFile(const std::string &file)
 {
     JsonReader reader;
     JsonValue json;
-    bool ok = false;
 
     if (reader.ParseFile(json, file))
     {
@@ -156,14 +182,11 @@ bool Configuration::ParseObjectsFile(const std::string &file)
                 object.Print();
                 list.push_back(object);
             }
-            ok = true;
         }
     }
     else
     {
         std::cout << "** Error opening file: " << file << std::endl;
     }
-
-    return ok;
 }
 

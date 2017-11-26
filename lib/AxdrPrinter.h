@@ -1,3 +1,13 @@
+/**
+ * AXDR printer to several output formats (currently XML)
+ *
+ * Copyright (c) 2016, Anthony Rabine
+ * All rights reserved.
+ *
+ * This software may be modified and distributed under the terms of the BSD license.
+ * See LICENSE.txt for more details.
+ *
+ */
 
 #ifndef AXDR_PRINTER
 #define AXDR_PRINTER
