@@ -67,6 +67,7 @@ bool CosemClient::Initialize(const std::string &commFile, const std::string &obj
 
     std::cout << "** Using LLS: " << mConf.cosem.lls << std::endl;
     std::cout << "** Using HDLC address: " << mConf.hdlc.phy_address << std::endl;
+    std::cout << "** Meter ID: " << mConf.meterId << std::endl;
 
     if (mConf.modem.useModem)
     {
