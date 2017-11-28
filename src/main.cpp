@@ -65,7 +65,7 @@ int main(int argc, char **argv)
     }
     else
     {
-        printf("Usage example: cosem_client /path/comm.json /another/objectlist.json 2017-08-01.00:00:00 2017-10-23.14:55:02\r\n");
+        printf("Usage example: cosem_client /path/meter.json /another/objectlist.json /path/comm.json 2017-08-01.00:00:00 2017-10-23.14:55:02\r\n");
         puts("\r\nDate-time format: %Y-%m-%d.%H:%M:%S");
     }
 
