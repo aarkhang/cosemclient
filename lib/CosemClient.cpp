@@ -715,7 +715,7 @@ int CosemClient::ReadObject(const Object &obj)
             std::fstream f;
 
             Util::Mkdir(dirName);
-            f.open(fileName, std::ios_base::out | std::ios_base::binary  | std::ios_base::app);
+            f.open(fileName, std::ios_base::out | std::ios_base::binary);
 
             if (f.is_open())
             {
