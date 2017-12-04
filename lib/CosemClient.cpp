@@ -69,21 +69,28 @@ bool CosemClient::Initialize(const std::string &commFile, const std::string &obj
     std::cout << "** Using HDLC address: " << mConf.hdlc.phy_address << std::endl;
     std::cout << "** Meter ID: " << mConf.meterId << std::endl;
 
-    if (mConf.modem.useModem)
+    if (mConf.meterId.size() == 0U)
     {
-        std::cout << "** Using Modem device" << std::endl;
-        mModemState = DISCONNECTED;
+    	std::cout << "** Please specify a valid meter ID" << std::endl;
     }
     else
     {
-        // Skip Modem state chart when no modem is in use
-        mModemState = CONNECTED;
-    }
+		if (mConf.modem.useModem)
+		{
+			std::cout << "** Using Modem device" << std::endl;
+			mModemState = DISCONNECTED;
+		}
+		else
+		{
+			// Skip Modem state chart when no modem is in use
+			mModemState = CONNECTED;
+		}
 
-    ok = mTransport.Open(params);
-    if (ok)
-    {
-        mTransport.Start();
+		ok = mTransport.Open(params);
+		if (ok)
+		{
+			mTransport.Start();
+		}
     }
     return ok;
 }
@@ -298,7 +305,7 @@ int CosemClient::ConnectHdlc()
     std::string snrmData(&mSndBuffer[0], size);
     std::string data;
 
-    if (HdlcProcess(snrmData, data, 4))
+    if (HdlcProcess(snrmData, data, 8))
     {
         ret = data.size();
         Transport::Printer(data.c_str(), data.size(), PRINT_HEX);
@@ -464,6 +471,7 @@ int CosemClient::ReadObject(const Object &obj)
 {
     int ret = 1;
     bool allowSelectiveAccess = false;
+    bool hasEndDate = false;
 
     std::tm tm_start = {};
     std::tm tm_end = {};
@@ -503,21 +511,22 @@ int CosemClient::ReadObject(const Object &obj)
                 std::cout << "** Parse end date failed\r\n";
                 allowSelectiveAccess = false;
             }
+            else
+            {
+            	hasEndDate = true;
+            }
         }
         else
         {
-            // No end date, so take today as the end-date
-
-            time_t t = time(0);   // get time now
-            tm_end = *localtime( & t );
-            std::cout << "** No end date defined, take today as end-date: " << std::ctime(&t) << std::endl;
+            // No end date
+        	hasEndDate = false;
+            std::cout << "** No end date defined" << std::endl;
         }
     }
 
     // For reception
     csm_array app_array;
     csm_array_init(&app_array, &mAppBuffer[0], cAppBufferSize, 0, 0);
-
 
     csm_request request;
 
@@ -536,7 +545,19 @@ int CosemClient::ReadObject(const Object &obj)
 
 
         DateToCosem(tm_start, &clockStartArray);
-        DateToCosem(tm_end, &clockEndArray);
+
+        if (hasEndDate)
+        {
+        	DateToCosem(tm_end, &clockEndArray);
+        }
+        else
+        {
+        	clk_datetime_t clk;
+
+        	// Set all Cosem DateTime fields as undefined
+        	clk_set_undefined(&clk);
+        	clk_datetime_to_cosem(&clk, &clockEndArray);
+        }
 
         csm_object_t clockObj;
 
@@ -616,45 +637,53 @@ int CosemClient::ReadObject(const Object &obj)
                     {
                         if (response.access_result == CSM_ACCESS_RESULT_SUCCESS)
                         {
-                            // Copy data into app data
-                            csm_array_write_buff(&app_array, csm_array_rd_data(&scratch_array), csm_array_unread(&scratch_array));
-
                             if (response.type == SVC_GET_RESPONSE_NORMAL)
                             {
-                                // We have the data
+                                // We have the data, copy it to the application buffer and stop
+                                csm_array_write_buff(&app_array, csm_array_rd_data(&scratch_array), csm_array_unread(&scratch_array));
                                 loop = false;
                                 dump = true;
                             }
                             else if (response.type == SVC_GET_RESPONSE_WITH_DATABLOCK)
                             {
-                                // Check if last block
-                                if (csm_client_has_more_data(&response))
-                                {
-                                    // Send next block
-                                    request.type = SVC_GET_REQUEST_NEXT;
-                                    request.db_request.block_number = response.block_number;
-                                    request.sender_invoke_id = response.invoke_id;
+                            	// Copy data into app data
+								uint32_t size = 0U;
+								if (csm_axdr_decode_block(&scratch_array, &size))
+								{
+									std::cout << "** Block of data of size: " << size << std::endl;
+									// FIXME: Test the size indicated in the packet and the real size received
+									// Add it
+									csm_array_write_buff(&app_array, csm_array_rd_data(&scratch_array), csm_array_unread(&scratch_array));
 
-                                    csm_array_init(&scratch_array, &mScratch[0], cBufferSize, 0, 3);
+									// Check if last block
+									if (csm_client_has_more_data(&response))
+									{
+										// Send next block
+										request.type = SVC_GET_REQUEST_NEXT;
+										request.db_request.block_number = response.block_number;
+										request.sender_invoke_id = response.invoke_id;
 
-                                    svc_get_request_encoder(&request, &scratch_array);
+										csm_array_init(&scratch_array, &mScratch[0], cBufferSize, 0, 3);
 
-                                    hdlc_print_result(&mConf.hdlc, HDLC_OK);
-                                    request_data = EncapsulateRequest(&scratch_array);
+										svc_get_request_encoder(&request, &scratch_array);
 
-                                    printf("** Sending ReadProfile next...\r\n");
-                                }
-                                else
-                                {
-                                    puts("No more data\r\n");
-                                    loop = false;
-                                    uint32_t size = 0U;
-                                    if (csm_axdr_decode_block(&app_array, &size))
-                                    {
-                                        std::cout << "** Block of data of size: " << size << std::endl;
-                                        dump = true;
-                                    }
-                                }
+										hdlc_print_result(&mConf.hdlc, HDLC_OK);
+										request_data = EncapsulateRequest(&scratch_array);
+
+										printf("** Sending ReadProfile next...\r\n");
+									}
+									else
+									{
+										puts("No more data\r\n");
+										loop = false;
+										dump = true;
+									}
+								}
+								else
+								{
+									puts("** ERROR: must be a block of data\r\n");
+									loop = false;
+								}
                             }
                             else
                             {
@@ -668,12 +697,7 @@ int CosemClient::ReadObject(const Object &obj)
                             loop = false;
 
                             // Try to save work anyway
-                            uint32_t size = 0U;
-                            if (csm_axdr_decode_block(&app_array, &size))
-                            {
-                                std::cout << "** Block of data of size: " << size << std::endl;
-                                dump = true;
-                            }
+                            dump = true;
                         }
                     }
                     else
@@ -719,7 +743,6 @@ int CosemClient::ReadObject(const Object &obj)
 
             if (f.is_open())
             {
-
                 f << xml_data << std::endl;
                 f.close();
             }
@@ -727,7 +750,7 @@ int CosemClient::ReadObject(const Object &obj)
             {
                 std::cout << "Cannot open file!" << std::endl;
             }
-          //  print_hex((const char *)&mAppBuffer[0], csm_array_written(&array));
+           // print_hex((const char *)&mAppBuffer[0], csm_array_written(&app_array));
         }
 
     }

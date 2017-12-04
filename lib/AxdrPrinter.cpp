@@ -189,9 +189,11 @@ std::string AxdrPrinter::DataToString(uint8_t type, uint32_t size, uint8_t *data
         case AXDR_TAG_BITSTRING:
         {
             uint32_t bytes = BITFIELD_BYTES(size);
-            for (uint32_t i = 0U; i < bytes; i++)
+            uint32_t counter = 0U;
+            bool loop = true;
+            for (uint32_t i = 0U; (i < bytes) && loop; i++)
             {
-                for (int j = 0; j < 8; j++)
+                for (int j = 0; (j < 8) && loop; j++)
                 {
                     uint8_t bit = data[i] >> (7-j) & 0x01U;
                     if (bit)
@@ -204,6 +206,12 @@ std::string AxdrPrinter::DataToString(uint8_t type, uint32_t size, uint8_t *data
                     }
 
                     ss << ";";
+
+                    counter++;
+					if (counter >= size)
+					{
+						loop = false;
+					}
                 }
             }
             break;
@@ -234,10 +242,7 @@ std::string AxdrPrinter::DataToString(uint8_t type, uint32_t size, uint8_t *data
         	for (uint32_t i = 0U; i < size; i++)
 			{
 				ss << static_cast<unsigned long>(data[i]);
-				if (i < (size-1))
-				{
-					ss << ";";
-				}
+				ss << ";";
 			}
 
         	ss_hint << "(";
