@@ -15,6 +15,8 @@
 
 
 Configuration::Configuration()
+	: testHdlc(false)
+	, retries(0)
 {
 
 }
@@ -34,6 +36,18 @@ void Configuration::ParseMeterFile(const std::string &file)
 			if (val.IsString())
 			{
 				meterId = val.GetString();
+			}
+
+			val = meterObj.FindValue("test_hdlc");
+			if (val.IsBoolean())
+			{
+				testHdlc = val.GetBool();
+			}
+
+			val = meterObj.FindValue("retries");
+			if (val.IsInteger())
+			{
+				retries = static_cast<uint32_t>(val.GetInteger());
 			}
 		}
 

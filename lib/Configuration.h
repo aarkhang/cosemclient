@@ -87,6 +87,8 @@ struct Configuration
     hdlc_t hdlc;
     std::vector<Object> list;
     std::string meterId;
+    bool testHdlc;
+    uint32_t retries;
 
     Configuration();
 

@@ -305,7 +305,7 @@ int CosemClient::ConnectHdlc()
     std::string snrmData(&mSndBuffer[0], size);
     std::string data;
 
-    if (HdlcProcess(snrmData, data, 8))
+    if (HdlcProcess(snrmData, data, 10))
     {
         ret = data.size();
         Transport::Printer(data.c_str(), data.size(), PRINT_HEX);
@@ -761,11 +761,12 @@ int CosemClient::ReadObject(const Object &obj)
 bool  CosemClient::PerformCosemRead()
 {
     bool ret = false;
+    static uint32_t retries = 0U;
 
     switch(mCosemState)
     {
         case HDLC:
-            printf("** Sending HDLC SNRM...\r\n");
+            printf("** Sending HDLC SNRM (addr: %d)...\r\n", mConf.hdlc.phy_address);
             if (ConnectHdlc() > 0)
             {
                printf("** HDLC success!\r\n");
@@ -774,7 +775,21 @@ bool  CosemClient::PerformCosemRead()
             }
             else
             {
-               printf("** Cannot connect to meter.\r\n");
+            	if (mConf.testHdlc)
+            	{
+            		retries++;
+            		if (retries >= mConf.retries)
+            		{
+            			retries = 0;
+						// Keep this state, no error, scan next HDLC address
+						mConf.hdlc.phy_address++;
+            		}
+            		ret = true;
+            	}
+            	else
+            	{
+            		printf("** Cannot connect to meter.\r\n");
+            	}
             }
          break;
         case ASSOCIATION_PENDING:
