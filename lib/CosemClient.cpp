@@ -775,21 +775,25 @@ bool  CosemClient::PerformCosemRead()
             }
             else
             {
-            	if (mConf.testHdlc)
-            	{
-            		retries++;
-            		if (retries >= mConf.retries)
-            		{
-            			retries = 0;
-						// Keep this state, no error, scan next HDLC address
-						mConf.hdlc.phy_address++;
-            		}
-            		ret = true;
-            	}
-            	else
-            	{
-            		printf("** Cannot connect to meter.\r\n");
-            	}
+                retries++;
+                if (retries >= mConf.retries)
+                {
+                    retries = 0;
+                    if (mConf.testHdlc)
+                    {
+                        // Keep this state, no error, scan next HDLC address
+                        mConf.hdlc.phy_address++;
+                        ret = true;
+                    }
+                    else
+                    {
+                        printf("** Cannot connect to meter.\r\n");
+                    }
+                }
+                else
+                {
+                    ret = true;
+                }
             }
          break;
         case ASSOCIATION_PENDING:
@@ -838,7 +842,7 @@ bool CosemClient::PerformTask()
     {
         case DISCONNECTED:
         {
-            if (SendModem("AT\r\n", "OK") > 0)
+            if (SendModem(mConf.modem.init + "\r\n", "OK") > 0)
             {
                 printf("** Modem test success!\r\n");
 
