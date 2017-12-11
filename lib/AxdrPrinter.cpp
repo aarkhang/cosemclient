@@ -327,7 +327,7 @@ std::string AxdrPrinter::Get()
 void AxdrPrinter::Start(const std::string &infos)
 {
     mStream.str("");
-    mStream  << "<Root" << infos <<  ">" << std::endl;
+    mStream  << "<Root " << infos <<  ">" << std::endl;
 }
 
 void AxdrPrinter::End()
