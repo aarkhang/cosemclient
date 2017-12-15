@@ -776,7 +776,7 @@ bool  CosemClient::PerformCosemRead()
             else
             {
                 retries++;
-                if (retries >= mConf.retries)
+                if (retries > mConf.retries)
                 {
                     retries = 0;
                     if (mConf.testHdlc)
