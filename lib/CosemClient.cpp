@@ -635,7 +635,7 @@ int CosemClient::ReadObject(const Object &obj)
                     // Good Cosem server packet
                     if (csm_client_decode(&response, &scratch_array))
                     {
-                        if (response.access_result == CSM_ACCESS_RESULT_SUCCESS)
+                        if ((response.service == AXDR_GET_RESPONSE) && (response.access_result == CSM_ACCESS_RESULT_SUCCESS))
                         {
                             if (response.type == SVC_GET_RESPONSE_NORMAL)
                             {
@@ -693,11 +693,44 @@ int CosemClient::ReadObject(const Object &obj)
                         }
                         else
                         {
-                            std::cout << "** Data access result: " << ResultToString(response.access_result) << std::endl;
-                            loop = false;
+                            // BAD response from meter, filter why
+                            if (response.service == AXDR_GET_RESPONSE)
+                            {
+                                std::cout << "** Data access result: " << ResultToString(response.access_result) << std::endl;
+                                // Try to save work anyway
+                                dump = true;
+                            }
+                            else if (response.service == AXDR_EXCEPTION_RESPONSE)
+                            {
+                                std::cout << "** Received exception from meter: ";
 
-                            // Try to save work anyway
-                            dump = true;
+                                if (response.exception.state_err == 1)
+                                {
+                                    std::cout << "Service not allowed." << std::endl;
+                                }
+                                else
+                                {
+                                    std::cout << "Service unknown." << std::endl;
+                                }
+
+                                if (response.exception.service_err == 1)
+                                {
+                                    std::cout << "Operation not possible." << std::endl;
+                                }
+                                else if (response.exception.service_err == 2)
+                                {
+                                    std::cout << "Service not supported." << std::endl;
+                                }
+                                else
+                                {
+                                    std::cout << "Other reason." << std::endl;
+                                }
+                            }
+                            else
+                            {
+                                std::cout << "** Error, service not found! " << std::endl;
+                            }
+                            loop = false;
                         }
                     }
                     else

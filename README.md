@@ -1,3 +1,5 @@
-# CosemClient
+# Cosem Client
 
-ull featured cosem client command line utility
+Full featured cosem client command line utility
+
+
