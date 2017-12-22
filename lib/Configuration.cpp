@@ -15,79 +15,194 @@
 
 
 Configuration::Configuration()
-	: testHdlc(false)
+	: timeout_connect(3U)
+    , timeout_dial(70U)
+    , timeout_request(5U)
 	, retries(0)
 {
 
 }
 
+/*
+{
+    "version": "1.0.0",
+
+    "session": {
+        "phy_layer": "serial",
+
+        "modem": {
+            "enable": true,
+            "init": "AT",
+            "phone": "0631500899"
+        },
+
+        "retries": 1,
+
+        "timeouts": {
+            "dial": 90,
+            "connect": 5,
+            "request": 5
+        }
+    },
+
+    "meters": [
+        {
+            "id": "saphir0899",
+            "transport": "hdlc",
+            "hdlc": {
+                "phy_addr": 17,
+                "address_size": 4,
+                "test_addr": false
+            },
+            "cosem": {
+                "auth_level": "LOW_LEVEL_SECURITY",
+                "auth_value": "ABCDEFGH",
+                "client": 1,
+                "logical_device": 1
+            }
+        }
+    ]
+}
+
+*/
+
 // Very tolerant, use default values of classes if corresponding parameter is not found
-void Configuration::ParseMeterFile(const std::string &file)
+void Configuration::ParseSessionFile(const std::string &file)
 {
     JsonReader reader;
     JsonValue json;
+    JsonValue val;
 
     if (reader.ParseFile(json, file))
     {
-    	JsonValue meterObj = json.FindValue("meter");
-		if (meterObj.IsObject())
-		{
-			JsonValue val = meterObj.FindValue("id");
-			if (val.IsString())
-			{
-				meterId = val.GetString();
-			}
-
-			val = meterObj.FindValue("test_hdlc");
-			if (val.IsBoolean())
-			{
-				testHdlc = val.GetBool();
-			}
-
-			val = meterObj.FindValue("retries");
-			if (val.IsInteger())
-			{
-				retries = static_cast<uint32_t>(val.GetInteger());
-			}
-		}
-
-        JsonValue cosemObj = json.FindValue("cosem");
-        if (cosemObj.IsObject())
+        JsonValue session = json.FindValue("session");
+        if (session.IsObject())
         {
-            JsonValue val = cosemObj.FindValue("lls");
-            if (val.IsString())
+            val= session.FindValue("retries");
+            if (val.IsInteger())
             {
-                cosem.lls = val.GetString();
+                retries = static_cast<uint32_t>(val.GetInteger());
+            }
+
+            // *********************************   MODEM   *********************************
+
+            JsonValue modemObj = json.FindValue("modem");
+            if (modemObj.IsObject())
+            {
+                val = modemObj.FindValue("phone");
+                if (val.IsString())
+                {
+                    modem.phone = val.GetString();
+                }
+
+                val = modemObj.FindValue("enable");
+                if (val.IsBoolean())
+                {
+                    modem.useModem = val.GetBool();
+                }
+
+                val = modemObj.FindValue("init");
+                if (val.IsString())
+                {
+                    modem.init = val.GetString();
+                }
+            }
+
+            // *********************************   TIMEOUTS   *********************************
+            JsonValue timeoutsObj = session.FindValue("timeouts");
+            if (timeoutsObj.IsObject())
+            {
+                val = timeoutsObj.FindValue("dial");
+                if (val.IsInteger())
+                {
+                    timeout_dial = static_cast<uint32_t>(val.GetInteger());
+                }
+
+                val = timeoutsObj.FindValue("connect");
+                if (val.IsInteger())
+                {
+                    timeout_connect = static_cast<uint32_t>(val.GetInteger());
+                }
+
+                val = timeoutsObj.FindValue("request");
+                if (val.IsInteger())
+                {
+                    timeout_request = static_cast<uint32_t>(val.GetInteger());
+                }
             }
         }
 
-        JsonValue hdlcObj = json.FindValue("hdlc");
-        if (hdlcObj.IsObject())
+        JsonValue meterObj = json.FindValue("meters");
+        if (meterObj.IsArray())
         {
-            JsonValue val = hdlcObj.FindValue("phy_addr");
-            if (val.IsInteger())
-            {
-                hdlc.phy_address = static_cast<unsigned int>(val.GetInteger());
-            }
 
-            val = hdlcObj.FindValue("logical_device");
-            if (val.IsInteger())
+            for (JsonArray::Iterator iter = meterObj.GetArray().Begin(); iter != meterObj.GetArray().End(); ++iter)
             {
-                hdlc.logical_device = static_cast<unsigned int>(val.GetInteger());
-            }
+                Meter meter;
+                if (iter->IsObject())
+                {
+                    val = iter->FindValue("id");
+                    if (val.IsString())
+                    {
+                        meter.meterId = val.GetString();
+                    }
 
-            val = hdlcObj.FindValue("address_size");
-            if (val.IsInteger())
-            {
-                hdlc.addr_len = static_cast<unsigned int>(val.GetInteger());
-            }
+                    // *********************************   COSEM   *********************************
+                    JsonValue cosemObj = iter->FindValue("cosem");
+                    if (cosemObj.IsObject())
+                    {
+                        val = cosemObj.FindValue("auth_value");
+                        if (val.IsString())
+                        {
+                            meter.cosem.auth_value = val.GetString();
+                        }
 
-            val = hdlcObj.FindValue("client");
-            if (val.IsInteger())
-            {
-                hdlc.client_addr = static_cast<unsigned int>(val.GetInteger());
+                        val = cosemObj.FindValue("auth_level");
+                        if (val.IsString())
+                        {
+                            meter.cosem.auth_level = val.GetString();
+                        }
+
+
+                        val = cosemObj.FindValue("client");
+                        if (val.IsInteger())
+                        {
+                            meter.hdlc.client_addr = static_cast<unsigned int>(val.GetInteger());
+                        }
+
+                        val = cosemObj.FindValue("logical_device");
+                        if (val.IsInteger())
+                        {
+                            meter.hdlc.logical_device = static_cast<unsigned int>(val.GetInteger());
+                        }
+                    }
+
+                    // *********************************   HDLC   *********************************
+                    JsonValue hdlcObj = iter->FindValue("hdlc");
+                    if (hdlcObj.IsObject())
+                    {
+                        val = hdlcObj.FindValue("phy_addr");
+                        if (val.IsInteger())
+                        {
+                            meter.hdlc.phy_address = static_cast<unsigned int>(val.GetInteger());
+                        }
+
+                        val = hdlcObj.FindValue("address_size");
+                        if (val.IsInteger())
+                        {
+                            meter.hdlc.addr_len = static_cast<unsigned int>(val.GetInteger());
+                        }
+
+                        val = meterObj.FindValue("test_addr");
+                        if (val.IsBoolean())
+                        {
+                            meter.testHdlcAddr = val.GetBool();
+                        }
+                    }
+                }
             }
         }
+
     }
     else
     {
@@ -104,36 +219,6 @@ void Configuration::ParseComFile(const std::string &file, Transport::Params &com
 
     if (reader.ParseFile(json, file))
     {
-        JsonValue dev = json.FindValue("device");
-        if (dev.IsString())
-        {
-            std::string devString = dev.GetString();
-            if (devString == "modem")
-            {
-                modem.useModem = true;
-            }
-            else
-            {
-                modem.useModem = false;
-            }
-        }
-
-        JsonValue modemObj = json.FindValue("modem");
-        if (modemObj.IsObject())
-        {
-            JsonValue val = modemObj.FindValue("phone");
-            if (val.IsString())
-            {
-                modem.phone = val.GetString();
-
-                val = modemObj.FindValue("init");
-                if (val.IsString())
-                {
-                    modem.init = val.GetString();
-                }
-            }
-        }
-
         JsonValue portObj = json.FindValue("serial");
         if (portObj.IsObject())
         {

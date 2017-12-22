@@ -37,21 +37,21 @@ class CosemClient
 public:
     CosemClient();
 
-    bool Initialize(const std::string &commFile, const std::string &objectsFile, const std::string &meterFile);
+    bool Initialize(Meter &meter, const std::string &commFile, const std::string &objectsFile, const std::string &meterFile);
 
     void SetStartDate(const std::string &date);
     void SetEndDate(const std::string &date);
 
     void WaitForStop();
 
-    bool SendModem(const std::string &command, const std::string &expected);
+    bool SendModem(const std::string &command, const std::string &expected, std::string &modemReply, uint32_t timeout);
 
     bool PerformTask();
 
     std::string ResultToString(csm_data_access_result result);
 
 
-    std::string GetLls() { return mConf.cosem.lls; }
+    std::string GetLls() { return mConf.mMeters[mMeterIndex].cosem.auth_value; }
 
 private:
     ModemState mModemState;
@@ -71,16 +71,16 @@ private:
     uint8_t mSelectiveAccessBuff[cSelectiveAccessBufferSize];
 
     std::uint32_t mReadIndex;
+    uint32_t mMeterIndex;
     Configuration mConf;
     Transport mTransport;
     csm_asso_state mAssoState;
-    uint32_t mModemTimeout;
 
-    int ConnectHdlc();
-    bool HdlcProcess(const std::string &send, std::string &rcv, int timeout);
+    int ConnectHdlc(Meter &meter);
+    bool HdlcProcess(Meter &meter, const std::string &send, std::string &rcv, int timeout);
     std::string EncapsulateRequest(csm_array *request);
-    bool PerformCosemRead();
-    int ConnectAarq();
+    bool PerformCosemRead(Meter &meter);
+    int ConnectAarq(Meter &meter);
     int ReadObject(const Object &obj);
 
 };

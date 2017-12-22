@@ -29,9 +29,16 @@ enum ModemState
 
 enum CosemState
 {
-    HDLC,
+    CONNECT_HDLC,
     ASSOCIATION_PENDING,
     ASSOCIATED
+};
+
+enum TransportType
+{
+    HDLC,
+    TCP_IP,
+    UDP_IP
 };
 
 struct Modem
@@ -50,12 +57,16 @@ struct Modem
 struct Cosem
 {
     Cosem()
+        : client(1U)
+        , logical_device(1U)
     {
 
     }
-    std::string lls;
-    std::string start_date;
-    std::string end_date;
+
+    std::string auth_value;
+    std::string auth_level;
+    uint16_t client;
+    uint16_t logical_device;
 };
 
 
@@ -79,20 +90,31 @@ struct Object
     std::int8_t attribute_id;
 };
 
+struct Meter
+{
+    Cosem cosem;
+    hdlc_t hdlc;
+    std::string meterId;
+    bool testHdlcAddr;
+    TransportType transport;
+};
+
 
 struct Configuration
 {
-    Modem modem;
-    Cosem cosem;
-    hdlc_t hdlc;
+    std::vector<Meter> mMeters;
     std::vector<Object> list;
-    std::string meterId;
-    bool testHdlc;
+    Modem modem;
+    uint32_t timeout_connect;
+    uint32_t timeout_dial;
+    uint32_t timeout_request;
     uint32_t retries;
+    std::string start_date;
+    std::string end_date;
 
     Configuration();
 
-    void ParseMeterFile(const std::string &file);
+    void ParseSessionFile(const std::string &file);
     void ParseComFile(const std::string &file, Transport::Params &comm);
     void ParseObjectsFile(const std::string &file);
 };

@@ -44,32 +44,32 @@ int StringToBin(const std::string &in, char *out)
 
 CosemClient::CosemClient()
     : mModemState(DISCONNECTED)
-    , mCosemState(HDLC)
+    , mCosemState(CONNECT_HDLC)
     , mReadIndex(0U)
-    , mModemTimeout(70U)
+    , mMeterIndex(0U)
 {
 
 }
 
 
-bool CosemClient::Initialize(const std::string &commFile, const std::string &objectsFile, const std::string &meterFile)
+bool CosemClient::Initialize(Meter &meter, const std::string &commFile, const std::string &objectsFile, const std::string &meterFile)
 {
     bool ok = false;
 
     Transport::Params params;
 
-    hdlc_init(&mConf.hdlc);
-    mConf.hdlc.sender = HDLC_CLIENT;
+    hdlc_init(&meter.hdlc);
+    meter.hdlc.sender = HDLC_CLIENT;
 
     mConf.ParseComFile(commFile, params);
     mConf.ParseObjectsFile(objectsFile);
-    mConf.ParseMeterFile(meterFile);
+    mConf.ParseSessionFile(meterFile);
 
-    std::cout << "** Using LLS: " << mConf.cosem.lls << std::endl;
-    std::cout << "** Using HDLC address: " << mConf.hdlc.phy_address << std::endl;
-    std::cout << "** Meter ID: " << mConf.meterId << std::endl;
+    std::cout << "** Using LLS: " << meter.cosem.auth_value << std::endl;
+    std::cout << "** Using HDLC address: " << meter.hdlc.phy_address << std::endl;
+    std::cout << "** Meter ID: " << meter.meterId << std::endl;
 
-    if (mConf.meterId.size() == 0U)
+    if (meter.meterId.size() == 0U)
     {
     	std::cout << "** Please specify a valid meter ID" << std::endl;
     }
@@ -97,12 +97,12 @@ bool CosemClient::Initialize(const std::string &commFile, const std::string &obj
 
 void CosemClient::SetStartDate(const std::string &date)
 {
-    mConf.cosem.start_date = date;
+    mConf.start_date = date;
 }
 
 void CosemClient::SetEndDate(const std::string &date)
 {
-    mConf.cosem.end_date = date;
+    mConf.end_date = date;
 }
 
 void CosemClient::WaitForStop()
@@ -111,7 +111,7 @@ void CosemClient::WaitForStop()
 }
 
 
-bool CosemClient::HdlcProcess(const std::string &send, std::string &rcv, int timeout)
+bool CosemClient::HdlcProcess(Meter &meter, const std::string &send, std::string &rcv, int timeout)
 {
     bool retCode = false;
 
@@ -127,15 +127,15 @@ bool CosemClient::HdlcProcess(const std::string &send, std::string &rcv, int tim
         {
             if (mTransport.Send(dataToSend, PRINT_HEX))
             {
-                if (mConf.hdlc.type == HDLC_PACKET_TYPE_I)
+                if (meter.hdlc.type == HDLC_PACKET_TYPE_I)
                 {
-                    if (mConf.hdlc.sss == 7U)
+                    if (meter.hdlc.sss == 7U)
                     {
-                        mConf.hdlc.sss = 0U;
+                        meter.hdlc.sss = 0U;
                     }
                     else
                     {
-                        mConf.hdlc.sss++;
+                        meter.hdlc.sss++;
                     }
                 }
                 dataSent = dataToSend;
@@ -204,11 +204,11 @@ bool CosemClient::HdlcProcess(const std::string &send, std::string &rcv, int tim
                             // ack last hdlc frame
                             if (hdlc.sss == 7U)
                             {
-                                mConf.hdlc.rrr = 0U;
+                                meter.hdlc.rrr = 0U;
                             }
                             else
                             {
-                                mConf.hdlc.rrr = hdlc.sss + 1;
+                                meter.hdlc.rrr = hdlc.sss + 1;
                             }
                         }
 
@@ -230,7 +230,7 @@ bool CosemClient::HdlcProcess(const std::string &send, std::string &rcv, int tim
                             {
                                 // Send RR
                                 hdlc.sender = HDLC_CLIENT;
-                                size = hdlc_encode_rr(&mConf.hdlc, (uint8_t*)&mSndBuffer[0], cBufferSize);
+                                size = hdlc_encode_rr(&meter.hdlc, (uint8_t*)&mSndBuffer[0], cBufferSize);
                                 dataToSend.assign(&mSndBuffer[0], size);
                             }
                         }
@@ -260,18 +260,16 @@ bool CosemClient::HdlcProcess(const std::string &send, std::string &rcv, int tim
 }
 
 
-bool CosemClient::SendModem(const std::string &command, const std::string &expected)
+bool CosemClient::SendModem(const std::string &command, const std::string &expected, std::string &modemReply, uint32_t timeout)
 {
     bool retCode = false;
 
     if (mTransport.Send(command, PRINT_RAW))
     {
-        std::string modemReply;
-
         bool loop = true;
         do {
             std::string data;
-            if (mTransport.WaitForData(data, mModemTimeout))
+            if (mTransport.WaitForData(data, timeout))
             {
                 Transport::Printer(data.c_str(), data.size(), PRINT_RAW);
                 modemReply += data;
@@ -296,25 +294,25 @@ bool CosemClient::SendModem(const std::string &command, const std::string &expec
     return retCode;
 }
 
-int CosemClient::ConnectHdlc()
+int CosemClient::ConnectHdlc(Meter &meter)
 {
     int ret = -1;
 
-    int size = hdlc_encode_snrm(&mConf.hdlc, (uint8_t *)&mSndBuffer[0], cBufferSize);
+    int size = hdlc_encode_snrm(&meter.hdlc, (uint8_t *)&mSndBuffer[0], cBufferSize);
 
     std::string snrmData(&mSndBuffer[0], size);
     std::string data;
 
-    if (HdlcProcess(snrmData, data, 10))
+    if (HdlcProcess(meter, snrmData, data, 10))
     {
         ret = data.size();
         Transport::Printer(data.c_str(), data.size(), PRINT_HEX);
 
         // Decode UA
-        ret = hdlc_decode_info_field(&mConf.hdlc, (const uint8_t *)data.c_str(), data.size());
+        ret = hdlc_decode_info_field(&meter.hdlc, (const uint8_t *)data.c_str(), data.size());
         if (ret == HDLC_OK)
         {
-            hdlc_print_result(&mConf.hdlc, ret);
+            hdlc_print_result(&meter.hdlc, ret);
             ret = 1U;
         }
     }
@@ -322,7 +320,27 @@ int CosemClient::ConnectHdlc()
     return ret;
 }
 
-int CosemClient::ConnectAarq()
+bool HasGoodLlc(csm_array *array)
+{
+    bool ret = false;
+    uint8_t llc1, llc2, llc3;
+
+    int valid = csm_array_read_u8(array, &llc1);
+    valid = valid && csm_array_read_u8(array, &llc2);
+    valid = valid && csm_array_read_u8(array, &llc3);
+
+    if (valid && (llc1 == 0xE6U) &&
+        (llc2 == 0xE7U) &&
+        (llc3 == 0x00U))
+    {
+        ret = true;
+    }
+
+    return ret;
+}
+
+
+int CosemClient::ConnectAarq(Meter &meter)
 {
     int ret = 0;
 
@@ -339,10 +357,39 @@ int CosemClient::ConnectAarq()
         std::string request_data = EncapsulateRequest(&scratch_array);
         std::string data;
 
-        if (HdlcProcess(request_data, data, 5))
+        // FIXME: find a way to merge code with ReadObject
+
+        if (HdlcProcess(meter, request_data, data, 5))
         {
             ret = data.size();
             Transport::Printer(data.c_str(), data.size(), PRINT_HEX);
+
+            csm_array_init(&scratch_array, &mScratch[0], cBufferSize, 0, 0);
+            csm_array_write_buff(&scratch_array, (const uint8_t *)data.c_str(), data.size());
+
+            if (HasGoodLlc(&scratch_array))
+            {
+                // Good Cosem server packet
+                if (csm_asso_decoder(&mAssoState, &scratch_array, CSM_ASSO_AARE))
+                {
+
+                }
+                else
+                {
+                    puts("Cannot decode Cosem AARE\r\n");
+                    ret = 3;
+                }
+            }
+            else
+            {
+                puts("Not a valid Cosem AARE LLC\r\n");
+                ret = 2;
+            }
+        }
+        else
+        {
+            puts("Cannot send/receive Cosem AARQ/AARE\r\n");
+            ret = 1;
         }
     }
     return ret;
@@ -415,7 +462,7 @@ static void AxdrData(uint8_t type, uint32_t size, uint8_t *data)
 }
 
 
-std::string CosemClient::EncapsulateRequest(csm_array *request)
+std::string CosemClient::EncapsulateRequest(Meter &meter, csm_array *request)
 {
     std::string request_data;
 
@@ -434,8 +481,8 @@ std::string CosemClient::EncapsulateRequest(csm_array *request)
         csm_array_set(request, 2U, 0x00U);
 
         // Encode HDLC
-        mConf.hdlc.sender = HDLC_CLIENT;
-        int send_size = hdlc_encode_data(&mConf.hdlc, (uint8_t *)&mSndBuffer[0], cBufferSize, request->buff, csm_array_written(request));
+        meter.hdlc.sender = HDLC_CLIENT;
+        int send_size = hdlc_encode_data(&meter.hdlc, (uint8_t *)&mSndBuffer[0], cBufferSize, request->buff, csm_array_written(request));
 
         request_data.assign((char *)&mSndBuffer[0], send_size);
     }
@@ -467,7 +514,7 @@ void DateToCosem(std::tm &date, csm_array *array)
 }
 
 
-int CosemClient::ReadObject(const Object &obj)
+int CosemClient::ReadObject(Meter &meter, const Object &obj)
 {
     int ret = 1;
     bool allowSelectiveAccess = false;
@@ -484,7 +531,7 @@ int CosemClient::ReadObject(const Object &obj)
 
     if (allowSelectiveAccess)
     {
-        if (mConf.cosem.start_date.size() > 0)
+        if (mConf.start_date.size() > 0)
         {
             // Try to decode start date
             std::stringstream ss(mConf.cosem.start_date);
@@ -502,7 +549,7 @@ int CosemClient::ReadObject(const Object &obj)
             allowSelectiveAccess = false;
         }
 
-        if (mConf.cosem.end_date.size() > 0)
+        if (mConf.end_date.size() > 0)
         {
             std::stringstream ss2(mConf.cosem.end_date);
             ss2 >> std::get_time(&tm_end, "%Y-%m-%d.%H:%M:%S");
@@ -616,21 +663,14 @@ int CosemClient::ReadObject(const Object &obj)
         {
             data.clear();
 
-            if (HdlcProcess(request_data, data, 5))
+            if (HdlcProcess(meter, request_data, data, 5))
             {
                 Transport::Printer(data.c_str(), data.size(), PRINT_HEX);
                 csm_array_init(&scratch_array, &mScratch[0], cBufferSize, 0, 0);
 
                 csm_array_write_buff(&scratch_array, (const uint8_t *)data.c_str(), data.size());
 
-                uint8_t llc1, llc2, llc3;
-                int valid = csm_array_read_u8(&scratch_array, &llc1);
-                valid = valid && csm_array_read_u8(&scratch_array, &llc2);
-                valid = valid && csm_array_read_u8(&scratch_array, &llc3);
-
-                if (valid && (llc1 == 0xE6U) &&
-                    (llc2 == 0xE7U) &&
-                    (llc3 == 0x00U))
+                if (HasGoodLlc(&scratch_array))
                 {
                     // Good Cosem server packet
                     if (csm_client_decode(&response, &scratch_array))
@@ -667,7 +707,7 @@ int CosemClient::ReadObject(const Object &obj)
 
 										svc_get_request_encoder(&request, &scratch_array);
 
-										hdlc_print_result(&mConf.hdlc, HDLC_OK);
+										hdlc_print_result(&meter.hdlc, HDLC_OK);
 										request_data = EncapsulateRequest(&scratch_array);
 
 										printf("** Sending ReadProfile next...\r\n");
@@ -706,11 +746,11 @@ int CosemClient::ReadObject(const Object &obj)
 
                                 if (response.exception.state_err == 1)
                                 {
-                                    std::cout << "Service not allowed." << std::endl;
+                                    std::cout << "Service not allowed.";
                                 }
                                 else
                                 {
-                                    std::cout << "Service unknown." << std::endl;
+                                    std::cout << "Service unknown.";
                                 }
 
                                 if (response.exception.service_err == 1)
@@ -764,7 +804,7 @@ int CosemClient::ReadObject(const Object &obj)
             std::string xml_data = gPrinter.Get();
             std::cout << xml_data << std::endl;
 
-            std::string dirName = mConf.meterId;
+            std::string dirName = meter.meterId;
             std::string fileName = dirName + Util::DIR_SEPARATOR + obj.name + ".xml";
 
             std::cout << "Dumping into file: " << fileName << std::endl;
@@ -791,16 +831,16 @@ int CosemClient::ReadObject(const Object &obj)
     return ret;
 }
 
-bool  CosemClient::PerformCosemRead()
+bool  CosemClient::PerformCosemRead(Meter &meter)
 {
     bool ret = false;
     static uint32_t retries = 0U;
 
     switch(mCosemState)
     {
-        case HDLC:
-            printf("** Sending HDLC SNRM (addr: %d)...\r\n", mConf.hdlc.phy_address);
-            if (ConnectHdlc() > 0)
+        case CONNECT_HDLC:
+            printf("** Sending HDLC SNRM (addr: %d)...\r\n", meter.hdlc.phy_address);
+            if (ConnectHdlc(meter) > 0)
             {
                printf("** HDLC success!\r\n");
                ret = true;
@@ -812,10 +852,10 @@ bool  CosemClient::PerformCosemRead()
                 if (retries > mConf.retries)
                 {
                     retries = 0;
-                    if (mConf.testHdlc)
+                    if (meter.testHdlcAddr)
                     {
                         // Keep this state, no error, scan next HDLC address
-                        mConf.hdlc.phy_address++;
+                        meter.hdlc.phy_address++;
                         ret = true;
                     }
                     else
@@ -832,7 +872,7 @@ bool  CosemClient::PerformCosemRead()
         case ASSOCIATION_PENDING:
 
             printf("** Sending AARQ...\r\n");
-            if (ConnectAarq() > 0)
+            if (ConnectAarq(meter) > 0)
             {
                printf("** AARQ success!\r\n");
                ret = true;
@@ -875,7 +915,8 @@ bool CosemClient::PerformTask()
     {
         case DISCONNECTED:
         {
-            if (SendModem(mConf.modem.init + "\r\n", "OK") > 0)
+            std::string modemReply;
+            if (SendModem(mConf.modem.init + "\r\n", "OK", modemReply) > 0)
             {
                 printf("** Modem test success!\r\n");
 
@@ -894,7 +935,8 @@ bool CosemClient::PerformTask()
         {
             std::cout << "** Dial: " << mConf.modem.phone << std::endl;
             std::string dialRequest = std::string("ATD") + mConf.modem.phone + std::string("\r\n");
-            if (SendModem(dialRequest, "CONNECT"))
+            std::string modemReply;
+            if (SendModem(dialRequest, "CONNECT", modemReply))
             {
                printf("** Modem dial success!\r\n");
                ret = true;
@@ -902,7 +944,14 @@ bool CosemClient::PerformTask()
             }
             else
             {
-               printf("** Dial failed.\r\n");
+                if (modemReply.size())
+                {
+                    std::cout << "** Dial failed, modem response: " << modemReply << std::endl;
+                }
+                else
+                {
+                    std::cout << "** Dial failed: no response from modem." << std::endl;
+                }
             }
 
             break;
@@ -910,7 +959,14 @@ bool CosemClient::PerformTask()
 
         case CONNECTED:
         {
-            ret = PerformCosemRead();
+
+            if (mMeterIndex < mConf.mMeters.size())
+            {
+                ret = PerformCosemRead(mConf.mMeters[mMeterIndex]);
+
+                mReadIndex++;
+            }
+
             break;
         }
         default:
