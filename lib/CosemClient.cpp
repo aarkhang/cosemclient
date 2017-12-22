@@ -52,45 +52,31 @@ CosemClient::CosemClient()
 }
 
 
-bool CosemClient::Initialize(Meter &meter, const std::string &commFile, const std::string &objectsFile, const std::string &meterFile)
+bool CosemClient::Initialize(const std::string &commFile, const std::string &objectsFile, const std::string &meterFile)
 {
     bool ok = false;
 
     Transport::Params params;
 
-    hdlc_init(&meter.hdlc);
-    meter.hdlc.sender = HDLC_CLIENT;
-
     mConf.ParseComFile(commFile, params);
     mConf.ParseObjectsFile(objectsFile);
     mConf.ParseSessionFile(meterFile);
 
-    std::cout << "** Using LLS: " << meter.cosem.auth_value << std::endl;
-    std::cout << "** Using HDLC address: " << meter.hdlc.phy_address << std::endl;
-    std::cout << "** Meter ID: " << meter.meterId << std::endl;
-
-    if (meter.meterId.size() == 0U)
+    if (mConf.modem.useModem)
     {
-    	std::cout << "** Please specify a valid meter ID" << std::endl;
+        std::cout << "** Using Modem device" << std::endl;
+        mModemState = DISCONNECTED;
     }
     else
     {
-		if (mConf.modem.useModem)
-		{
-			std::cout << "** Using Modem device" << std::endl;
-			mModemState = DISCONNECTED;
-		}
-		else
-		{
-			// Skip Modem state chart when no modem is in use
-			mModemState = CONNECTED;
-		}
+        // Skip Modem state chart when no modem is in use
+        mModemState = CONNECTED;
+    }
 
-		ok = mTransport.Open(params);
-		if (ok)
-		{
-			mTransport.Start();
-		}
+    ok = mTransport.Open(params);
+    if (ok)
+    {
+        mTransport.Start();
     }
     return ok;
 }
@@ -303,7 +289,7 @@ int CosemClient::ConnectHdlc(Meter &meter)
     std::string snrmData(&mSndBuffer[0], size);
     std::string data;
 
-    if (HdlcProcess(meter, snrmData, data, 10))
+    if (HdlcProcess(meter, snrmData, data, mConf.timeout_connect))
     {
         ret = data.size();
         Transport::Printer(data.c_str(), data.size(), PRINT_HEX);
@@ -354,12 +340,12 @@ int CosemClient::ConnectAarq(Meter &meter)
 
     if (ret)
     {
-        std::string request_data = EncapsulateRequest(&scratch_array);
+        std::string request_data = EncapsulateRequest(meter, &scratch_array);
         std::string data;
 
         // FIXME: find a way to merge code with ReadObject
 
-        if (HdlcProcess(meter, request_data, data, 5))
+        if (HdlcProcess(meter, request_data, data, mConf.timeout_request))
         {
             ret = data.size();
             Transport::Printer(data.c_str(), data.size(), PRINT_HEX);
@@ -393,6 +379,17 @@ int CosemClient::ConnectAarq(Meter &meter)
         }
     }
     return ret;
+}
+
+std::string CosemClient::GetLls()
+{
+    std::string lls;
+
+    if (mConf.meters.size() > 0)
+    {
+        lls = mConf.meters[mMeterIndex].cosem.auth_value;
+    }
+    return lls;
 }
 
 std::string CosemClient::ResultToString(csm_data_access_result result)
@@ -534,7 +531,7 @@ int CosemClient::ReadObject(Meter &meter, const Object &obj)
         if (mConf.start_date.size() > 0)
         {
             // Try to decode start date
-            std::stringstream ss(mConf.cosem.start_date);
+            std::stringstream ss(mConf.start_date);
             ss >> std::get_time(&tm_start, "%Y-%m-%d.%H:%M:%S");
 
             if (ss.fail())
@@ -551,7 +548,7 @@ int CosemClient::ReadObject(Meter &meter, const Object &obj)
 
         if (mConf.end_date.size() > 0)
         {
-            std::stringstream ss2(mConf.cosem.end_date);
+            std::stringstream ss2(mConf.end_date);
             ss2 >> std::get_time(&tm_end, "%Y-%m-%d.%H:%M:%S");
             if (ss2.fail())
             {
@@ -653,7 +650,7 @@ int CosemClient::ReadObject(Meter &meter, const Object &obj)
     {
         std::cout << "** Sending request for object: " << obj.name << std::endl;
 
-        std::string request_data = EncapsulateRequest(&scratch_array);
+        std::string request_data = EncapsulateRequest(meter, &scratch_array);
         std::string data;
         csm_response response;
         bool loop = true;
@@ -663,7 +660,7 @@ int CosemClient::ReadObject(Meter &meter, const Object &obj)
         {
             data.clear();
 
-            if (HdlcProcess(meter, request_data, data, 5))
+            if (HdlcProcess(meter, request_data, data, mConf.timeout_request))
             {
                 Transport::Printer(data.c_str(), data.size(), PRINT_HEX);
                 csm_array_init(&scratch_array, &mScratch[0], cBufferSize, 0, 0);
@@ -708,7 +705,7 @@ int CosemClient::ReadObject(Meter &meter, const Object &obj)
 										svc_get_request_encoder(&request, &scratch_array);
 
 										hdlc_print_result(&meter.hdlc, HDLC_OK);
-										request_data = EncapsulateRequest(&scratch_array);
+										request_data = EncapsulateRequest(meter, &scratch_array);
 
 										printf("** Sending ReadProfile next...\r\n");
 									}
@@ -834,73 +831,79 @@ int CosemClient::ReadObject(Meter &meter, const Object &obj)
 bool  CosemClient::PerformCosemRead(Meter &meter)
 {
     bool ret = false;
-    static uint32_t retries = 0U;
+    uint32_t retries = 0U;
 
-    switch(mCosemState)
+    do
     {
-        case CONNECT_HDLC:
-            printf("** Sending HDLC SNRM (addr: %d)...\r\n", meter.hdlc.phy_address);
-            if (ConnectHdlc(meter) > 0)
-            {
-               printf("** HDLC success!\r\n");
-               ret = true;
-               mCosemState = ASSOCIATION_PENDING;
-            }
-            else
-            {
-                retries++;
-                if (retries > mConf.retries)
+
+        switch(mCosemState)
+        {
+            case CONNECT_HDLC:
+                printf("** Sending HDLC SNRM (addr: %d)...\r\n", meter.hdlc.phy_address);
+                if (ConnectHdlc(meter) > 0)
                 {
-                    retries = 0;
-                    if (meter.testHdlcAddr)
-                    {
-                        // Keep this state, no error, scan next HDLC address
-                        meter.hdlc.phy_address++;
-                        ret = true;
-                    }
-                    else
-                    {
-                        printf("** Cannot connect to meter.\r\n");
-                    }
+                   printf("** HDLC success!\r\n");
+                   ret = true;
+                   mCosemState = ASSOCIATION_PENDING;
                 }
                 else
                 {
-                    ret = true;
+                    retries++;
+                    if (retries > mConf.retries)
+                    {
+                        retries = 0;
+                        if (meter.testHdlcAddr)
+                        {
+                            // Keep this state, no error, scan next HDLC address
+                            meter.hdlc.phy_address++;
+                            ret = true;
+                        }
+                        else
+                        {
+                            printf("** Cannot connect to meter.\r\n");
+                            ret = false;
+                        }
+                    }
+                    else
+                    {
+                        ret = true;
+                    }
                 }
-            }
-         break;
-        case ASSOCIATION_PENDING:
+             break;
+            case ASSOCIATION_PENDING:
 
-            printf("** Sending AARQ...\r\n");
-            if (ConnectAarq(meter) > 0)
+                printf("** Sending AARQ...\r\n");
+                if (ConnectAarq(meter) > 0)
+                {
+                   printf("** AARQ success!\r\n");
+                   ret = true;
+                   mReadIndex = 0U;
+                   mCosemState = ASSOCIATED;
+                }
+                else
+                {
+                   printf("** Cannot AARQ to meter.\r\n");
+                }
+                break;
+            case ASSOCIATED:
             {
-               printf("** AARQ success!\r\n");
-               ret = true;
-               mReadIndex = 0U;
-               mCosemState = ASSOCIATED;
-            }
-            else
-            {
-               printf("** Cannot AARQ to meter.\r\n");
-            }
-            break;
-        case ASSOCIATED:
-        {
-            if (mReadIndex < mConf.list.size())
-            {
-                Object obj = mConf.list[mReadIndex];
+                if (mReadIndex < mConf.list.size())
+                {
+                    Object obj = mConf.list[mReadIndex];
 
-                (void) ReadObject(obj);
-                ret = true;
+                    (void) ReadObject(meter, obj);
+                    ret = true;
 
-                mReadIndex++;
+                    mReadIndex++;
+                }
+                break;
             }
-            break;
+            default:
+                ret = false;
+                break;
+
         }
-        default:
-            break;
-
-    }
+    } while (ret);
 
     return ret;
 }
@@ -916,7 +919,7 @@ bool CosemClient::PerformTask()
         case DISCONNECTED:
         {
             std::string modemReply;
-            if (SendModem(mConf.modem.init + "\r\n", "OK", modemReply) > 0)
+            if (SendModem(mConf.modem.init + "\r\n", "OK", modemReply, 2U) > 0)
             {
                 printf("** Modem test success!\r\n");
 
@@ -936,7 +939,7 @@ bool CosemClient::PerformTask()
             std::cout << "** Dial: " << mConf.modem.phone << std::endl;
             std::string dialRequest = std::string("ATD") + mConf.modem.phone + std::string("\r\n");
             std::string modemReply;
-            if (SendModem(dialRequest, "CONNECT", modemReply))
+            if (SendModem(dialRequest, "CONNECT", modemReply, mConf.timeout_dial))
             {
                printf("** Modem dial success!\r\n");
                ret = true;
@@ -959,12 +962,32 @@ bool CosemClient::PerformTask()
 
         case CONNECTED:
         {
-
-            if (mMeterIndex < mConf.mMeters.size())
+            if (mMeterIndex < mConf.meters.size())
             {
-                ret = PerformCosemRead(mConf.mMeters[mMeterIndex]);
+                Meter meter = mConf.meters[mMeterIndex];
 
-                mReadIndex++;
+
+                std::cout << "** Using LLS: " << meter.cosem.auth_value << std::endl;
+                std::cout << "** Meter ID: " << meter.meterId << std::endl;
+                std::cout << "** Using Client: " << meter.cosem.client << std::endl;
+
+                if (meter.transport == HDLC)
+                {
+                    meter.hdlc.sender = HDLC_CLIENT;
+                    meter.hdlc.logical_device = meter.cosem.logical_device;
+                    meter.hdlc.client_addr = meter.cosem.client;
+                    std::cout << "** Using HDLC address: " << meter.hdlc.phy_address << std::endl;
+                }
+
+                if (meter.meterId.size() > 0U)
+                {
+                    ret = PerformCosemRead(meter);
+                }
+                else
+                {
+                    std::cout << "** Please specify a valid meter ID" << std::endl;
+                }
+                mMeterIndex++;
             }
 
             break;

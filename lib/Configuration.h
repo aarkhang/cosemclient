@@ -92,6 +92,12 @@ struct Object
 
 struct Meter
 {
+    Meter()
+        : testHdlcAddr(false)
+        , transport(HDLC)
+    {
+        hdlc_init(&hdlc);
+    }
     Cosem cosem;
     hdlc_t hdlc;
     std::string meterId;
@@ -102,7 +108,7 @@ struct Meter
 
 struct Configuration
 {
-    std::vector<Meter> mMeters;
+    std::vector<Meter> meters;
     std::vector<Object> list;
     Modem modem;
     uint32_t timeout_connect;

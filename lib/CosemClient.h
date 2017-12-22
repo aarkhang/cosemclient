@@ -37,7 +37,7 @@ class CosemClient
 public:
     CosemClient();
 
-    bool Initialize(Meter &meter, const std::string &commFile, const std::string &objectsFile, const std::string &meterFile);
+    bool Initialize(const std::string &commFile, const std::string &objectsFile, const std::string &meterFile);
 
     void SetStartDate(const std::string &date);
     void SetEndDate(const std::string &date);
@@ -51,7 +51,7 @@ public:
     std::string ResultToString(csm_data_access_result result);
 
 
-    std::string GetLls() { return mConf.mMeters[mMeterIndex].cosem.auth_value; }
+    std::string GetLls();
 
 private:
     ModemState mModemState;
@@ -78,10 +78,10 @@ private:
 
     int ConnectHdlc(Meter &meter);
     bool HdlcProcess(Meter &meter, const std::string &send, std::string &rcv, int timeout);
-    std::string EncapsulateRequest(csm_array *request);
+    std::string EncapsulateRequest(Meter &meter, csm_array *request);
     bool PerformCosemRead(Meter &meter);
     int ConnectAarq(Meter &meter);
-    int ReadObject(const Object &obj);
+    int ReadObject(Meter &meter, const Object &obj);
 
 };
 

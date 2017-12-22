@@ -86,7 +86,7 @@ void Configuration::ParseSessionFile(const std::string &file)
 
             // *********************************   MODEM   *********************************
 
-            JsonValue modemObj = json.FindValue("modem");
+            JsonValue modemObj = session.FindValue("modem");
             if (modemObj.IsObject())
             {
                 val = modemObj.FindValue("phone");
@@ -147,6 +147,24 @@ void Configuration::ParseSessionFile(const std::string &file)
                         meter.meterId = val.GetString();
                     }
 
+                    val = iter->FindValue("transport");
+                    if (val.IsString())
+                    {
+                        std::string transport = val.GetString();
+                        if (transport == "hdlc")
+                        {
+                            meter.transport = HDLC;
+                        }
+                        else if (transport == "tcp")
+                        {
+                            meter.transport = TCP_IP;
+                        }
+                        else
+                        {
+                            meter.transport = UDP_IP;
+                        }
+                    }
+
                     // *********************************   COSEM   *********************************
                     JsonValue cosemObj = iter->FindValue("cosem");
                     if (cosemObj.IsObject())
@@ -163,17 +181,16 @@ void Configuration::ParseSessionFile(const std::string &file)
                             meter.cosem.auth_level = val.GetString();
                         }
 
-
                         val = cosemObj.FindValue("client");
                         if (val.IsInteger())
                         {
-                            meter.hdlc.client_addr = static_cast<unsigned int>(val.GetInteger());
+                            meter.cosem.client = static_cast<unsigned int>(val.GetInteger());
                         }
 
                         val = cosemObj.FindValue("logical_device");
                         if (val.IsInteger())
                         {
-                            meter.hdlc.logical_device = static_cast<unsigned int>(val.GetInteger());
+                            meter.cosem.logical_device = static_cast<unsigned int>(val.GetInteger());
                         }
                     }
 
@@ -193,12 +210,15 @@ void Configuration::ParseSessionFile(const std::string &file)
                             meter.hdlc.addr_len = static_cast<unsigned int>(val.GetInteger());
                         }
 
-                        val = meterObj.FindValue("test_addr");
+                        val = hdlcObj.FindValue("test_addr");
                         if (val.IsBoolean())
                         {
                             meter.testHdlcAddr = val.GetBool();
                         }
                     }
+
+                    // Add meter to the list
+                    meters.push_back(meter);
                 }
             }
         }

@@ -31,9 +31,6 @@ extern "C" int csm_sys_get_lls_password(uint8_t sap, uint8_t *array, uint8_t max
 
 int main(int argc, char **argv)
 {
-    bool ok = true;
-
-
     setbuf(stdout, NULL); // disable printf buffering
 
     puts("** DLMS/Cosem Client started\r\n");
@@ -55,12 +52,9 @@ int main(int argc, char **argv)
         }
 
         // Before application, test connectivity
-        ok = client.Initialize(commFile, objectsFile, meterFile);
-
-        while(ok)
+        if (client.Initialize(commFile, objectsFile, meterFile))
         {
-            sleep(1);
-            ok = client.PerformTask();
+            while (client.PerformTask());
         }
     }
     else
