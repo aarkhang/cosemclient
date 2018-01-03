@@ -19,6 +19,7 @@
 #include "JsonReader.h"
 #include "hdlc.h"
 #include "Transport.h"
+#include "csm_association.h"
 
 enum ModemState
 {
@@ -63,7 +64,48 @@ struct Cosem
 
     }
 
-    std::string auth_value;
+    csm_auth_level GetAuthLevelFromString()
+    {
+        csm_auth_level level;
+
+        if (auth_level == "LOW_LEVEL_SECURITY")
+        {
+            level = CSM_AUTH_LOW_LEVEL;
+        }
+        else if (auth_level == "HIGH_LEVEL_SECURITY")
+        {
+            level = CSM_AUTH_HIGH_LEVEL;
+        }
+        else if (auth_level == "HIGH_LEVEL_MD55_SECURITY")
+        {
+            level = CSM_AUTH_HIGH_LEVEL_MD5;
+        }
+        else if (auth_level == "HIGH_LEVEL_SHA1_SECURITY")
+        {
+            level = CSM_AUTH_HIGH_LEVEL_SHA1;
+        }
+        else if (auth_level == "HIGH_LEVEL_GMAC_SECURITY")
+        {
+            level = CSM_AUTH_HIGH_LEVEL_GMAC;
+        }
+        else if (auth_level == "HIGH_LEVEL_SHA256_SECURITY")
+        {
+            level = CSM_AUTH_HIGH_LEVEL_SHA256;
+        }
+        else if (auth_level == "NO_SECURITY")
+        {
+            level = CSM_AUTH_LOWEST_LEVEL;
+        }
+        else
+        {
+            level = CSM_AUTH_LOWEST_LEVEL;
+        }
+
+        return level;
+    }
+
+    std::string auth_password;
+    std::string auth_hls_secret;
     std::string auth_level;
     uint16_t client;
     uint16_t logical_device;

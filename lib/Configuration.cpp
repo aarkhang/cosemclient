@@ -56,7 +56,8 @@ Configuration::Configuration()
             },
             "cosem": {
                 "auth_level": "LOW_LEVEL_SECURITY",
-                "auth_value": "ABCDEFGH",
+                "auth_password": "ABCDEFGH",
+                "auth_hls_secret": "000102030405060708090A0B0C0D0E0F",
                 "client": 1,
                 "logical_device": 1
             }
@@ -169,10 +170,16 @@ void Configuration::ParseSessionFile(const std::string &file)
                     JsonValue cosemObj = iter->FindValue("cosem");
                     if (cosemObj.IsObject())
                     {
-                        val = cosemObj.FindValue("auth_value");
+                        val = cosemObj.FindValue("auth_password");
                         if (val.IsString())
                         {
-                            meter.cosem.auth_value = val.GetString();
+                            meter.cosem.auth_password = val.GetString();
+                        }
+
+                        val = cosemObj.FindValue("auth_hls_secret");
+                        if (val.IsString())
+                        {
+                            meter.cosem.auth_hls_secret = val.GetString();
                         }
 
                         val = cosemObj.FindValue("auth_level");
