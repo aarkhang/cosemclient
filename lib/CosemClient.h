@@ -76,12 +76,14 @@ private:
     Transport mTransport;
     csm_asso_state mAssoState;
 
+    std::string AuthResultToString(enum csm_asso_result result);
+    int Pass3And4(Meter &meter);
     int ConnectHdlc(Meter &meter);
     bool HdlcProcess(Meter &meter, const std::string &send, std::string &rcv, int timeout);
     std::string EncapsulateRequest(Meter &meter, csm_array *request);
     bool PerformCosemRead(Meter &meter);
     int ConnectAarq(Meter &meter);
-    int ReadObject(Meter &meter, const Object &obj);
+    int AccessObject(Meter &meter, const Object &obj, csm_request &request, csm_array &app_array);
 
 };
 
