@@ -9,7 +9,8 @@
 
 // Ciphering library
 #include "gcm.h"
-
+#include "md5.h"
+#include "sha256.h"
 
 // Standard libraries
 #include <string.h>
@@ -62,6 +63,27 @@ const uint8_t *csm_sys_get_system_title()
 {
     return system_title;
 }
+
+int csm_hal_decode_selective_access(csm_request *request, csm_array *array)
+{
+    (void) request;
+    (void) array;
+
+    // FIXME: decode selective access for the server
+    return FALSE;
+}
+
+
+void csm_hal_md5(const uint8_t *input, uint32_t size, uint8_t *output)
+{
+    mbedtls_md5(input, size, output);
+}
+
+void csm_hal_sha256(const uint8_t *input, uint32_t size, uint8_t *output)
+{
+    mbedtls_sha256(input, size, output, 0);
+}
+
 
 uint8_t *csm_sys_get_key(uint8_t sap, csm_sec_key key_id)
 {
@@ -133,9 +155,9 @@ uint8_t csm_sys_get_mechanism_id(uint8_t sap)
 }
 
 // TODO: Write a note on the randomize function, it should be NIST compliant (use a target-dependant implementation)
-uint8_t csm_sys_get_random_u8()
+uint8_t csm_hal_get_random_u8(uint8_t min, uint8_t max)
 {
-    return (uint8_t)(rand()%256);
+    return min + rand() % ((max + 1) - min);
 }
 
 

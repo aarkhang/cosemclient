@@ -17,7 +17,7 @@
 
 CosemClient client;
 
-extern "C" int csm_sys_get_lls_password(uint8_t sap, uint8_t *array, uint8_t max_size)
+extern "C" void csm_hal_get_lls_password(uint8_t sap, uint8_t *array, uint8_t max_size)
 {
     (void)sap;
     std::string lls = client.GetLls();
@@ -25,8 +25,6 @@ extern "C" int csm_sys_get_lls_password(uint8_t sap, uint8_t *array, uint8_t max
     uint32_t size = (lls.size() > max_size) ? max_size : lls.size();
 
     lls.copy((char*)array, size);
-
-    return TRUE;
 }
 
 int main(int argc, char **argv)
