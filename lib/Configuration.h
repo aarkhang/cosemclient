@@ -117,6 +117,7 @@ struct Object
     Object()
         : class_id(0U)
         , attribute_id(0)
+        , dump(true)
     {
 
     }
@@ -130,6 +131,7 @@ struct Object
     std::string ln;
     std::uint16_t class_id;
     std::int8_t attribute_id;
+    bool dump;
 };
 
 struct Meter

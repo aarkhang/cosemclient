@@ -27,6 +27,7 @@
 #include "csm_array.h"
 #include "csm_services.h"
 #include "csm_axdr_codec.h"
+#include "csm_definitions.h"
 #include "clock.h"
 
 
@@ -314,10 +315,10 @@ bool HasGoodLlc(csm_array *array)
 }
 
 
-int CosemClient::Pass3And4(Meter &meter)
+bool CosemClient::Pass3And4(Meter &meter)
 {
     static const uint32_t cHashBufferSize = 256U; // enough size to store max hash algorithm result: FIXME make it dependent of the supported algorithms
-    int ret = 0;
+    bool retCode = false;
 
     uint8_t hash[cHashBufferSize];
 
@@ -327,6 +328,7 @@ int CosemClient::Pass3And4(Meter &meter)
     obj.class_id = 15U;
     obj.ln = "0.0.40.0.0.255";
     obj.attribute_id = 1U;
+    obj.dump = false;
 
     csm_request request;
     request.db_request.service = SVC_ACTION;
@@ -344,7 +346,8 @@ int CosemClient::Pass3And4(Meter &meter)
 
     bool valid = false;
 
-    if ((mAssoState.auth_level == CSM_AUTH_HIGH_LEVEL) ||  (mAssoState.auth_level == CSM_AUTH_HIGH_LEVEL_MD5))
+    if ((mAssoState.auth_level == CSM_AUTH_HIGH_LEVEL) ||  (mAssoState.auth_level == CSM_AUTH_HIGH_LEVEL_MD5) ||
+            (mAssoState.auth_level == CSM_AUTH_HIGH_LEVEL_GMAC))
     {
         uint8_t digest[32]; // max size for SHA256
         uint32_t digest_size = 16U; // default MD5
@@ -382,14 +385,17 @@ int CosemClient::Pass3And4(Meter &meter)
     else if (mAssoState.auth_level == CSM_AUTH_HIGH_LEVEL_SHA1)
     {
         // FIXME
+        std::cout << "** HLS4/SHA1 not implemented!" << std::flush;
     }
     else if (mAssoState.auth_level == CSM_AUTH_HIGH_LEVEL_GMAC)
     {
         // FIXME
+        std::cout << "** HLS5/GMAC not implemented!" << std::flush;
     }
     else if (mAssoState.auth_level == CSM_AUTH_HIGH_LEVEL_SHA256)
     {
         // FIXME
+        std::cout << "** SHA256/GMAC not implemented!" << std::flush;
     }
     else
     {
@@ -402,10 +408,11 @@ int CosemClient::Pass3And4(Meter &meter)
         if (AccessObject(meter, obj, request, app_array))
         {
             // FIXME: parse result, test received digest
+            retCode = true;
         }
     }
 
-    return ret;
+    return retCode;
 }
 
 std::string CosemClient::AuthResultToString(enum csm_asso_result result)
@@ -440,9 +447,9 @@ std::string CosemClient::AuthResultToString(enum csm_asso_result result)
     return ss.str();
 }
 
-int CosemClient::ConnectAarq(Meter &meter)
+bool CosemClient::ConnectAarq(Meter &meter)
 {
-    int ret = 0;
+    bool retCode = false;
 
     csm_array scratch_array;
     csm_array_init(&scratch_array, &mScratch[0], cBufferSize, 0, 3);
@@ -450,16 +457,13 @@ int CosemClient::ConnectAarq(Meter &meter)
     mAssoState.auth_level = meter.cosem.GetAuthLevelFromString();
     mAssoState.ref = LN_REF;
 
-    ret = csm_asso_encoder(&mAssoState, &scratch_array, CSM_ASSO_AARQ);
-
-    if (ret)
+    if (csm_asso_encoder(&mAssoState, &scratch_array, CSM_ASSO_AARQ))
     {
         std::string request_data = EncapsulateRequest(meter, &scratch_array);
         std::string data;
 
         if (HdlcProcess(meter, request_data, data, mConf.timeout_request))
         {
-            ret = data.size();
             Transport::Printer(data.c_str(), data.size(), PRINT_HEX);
 
             csm_array_init(&scratch_array, &mScratch[0], cBufferSize, 0, 0);
@@ -480,45 +484,40 @@ int CosemClient::ConnectAarq(Meter &meter)
                         {
                             if (mAssoState.handshake.result == CSM_ASSO_AUTH_REQUIRED)
                             {
-                                ret = Pass3And4(meter);
+                                std::cout << "** High authentication: Starting pass 3." << std::endl;
+                                retCode = Pass3And4(meter);
                             }
                             else
                             {
                                 std::cout << "** FAILURE: result must be in state: authentication-required" << std::endl;
-                                ret = 5;
                             }
                         }
                         else
                         {
                             std::cout << "** FAILURE: " << AuthResultToString(mAssoState.handshake.result) << std::endl;
-                            ret = 5;
                         }
                     }
                     else
                     {
                         std::cout << "** FAILURE: " << AuthResultToString(mAssoState.handshake.result) << std::endl;
-                        ret = 4;
                     }
                 }
                 else
                 {
                     std::cout << "** Cannot decode Cosem AARE" << std::endl;
-                    ret = 3;
                 }
             }
             else
             {
                 std::cout << "** Not a valid Cosem AARE LLC" << std::endl;
-                ret = 2;
             }
         }
         else
         {
             std::cout << "** Cannot send/receive Cosem AARQ/AARE" << std::endl;
-            ret = 1;
         }
     }
-    return ret;
+    return retCode;
 }
 
 std::string CosemClient::GetLls()
@@ -804,7 +803,29 @@ int CosemClient::AccessObject(Meter &meter, const Object &obj, csm_request &requ
                     // Good Cosem server packet
                     if (csm_client_decode(&response, &scratch_array))
                     {
-                        if ((response.service == request.db_request.service) && (response.access_result == CSM_ACCESS_RESULT_SUCCESS))
+                        bool isResponseValid = false;
+
+                        if (response.service == request.db_request.service)
+                        {
+                            if (response.service == SVC_ACTION)
+                            {
+                                if (response.action_result == CSM_ACTION_RESULT_SUCCESS)
+                                {
+                                    // If not set, then we must have some data
+                                    isResponseValid = true;
+                                }
+                            }
+                            else
+                            {
+                                if (response.access_result == CSM_ACCESS_RESULT_SUCCESS)
+                                {
+                                    isResponseValid = true;
+                                }
+                            }
+                        }
+
+
+                        if (isResponseValid)
                         {
                             if (response.type == SVC_RESPONSE_NORMAL)
                             {
@@ -922,9 +943,8 @@ int CosemClient::AccessObject(Meter &meter, const Object &obj, csm_request &requ
         }
         while(loop);
 
-        if (dump)
+        if (dump && obj.dump)
         {
-
             std::string infos = "Object=\"" + obj.name + "\"";
             gPrinter.Start(infos);
             csm_axdr_decode_tags(&app_array, AxdrData);
@@ -1005,7 +1025,7 @@ bool  CosemClient::PerformCosemRead(Meter &meter)
             case ASSOCIATION_PENDING:
 
                 printf("** Sending AARQ...\r\n");
-                if (ConnectAarq(meter) > 0)
+                if (ConnectAarq(meter))
                 {
                    printf("** AARQ success!\r\n");
                    ret = true;
@@ -1015,6 +1035,7 @@ bool  CosemClient::PerformCosemRead(Meter &meter)
                 else
                 {
                    std::cout << "** Cannot associate to meter." << std::endl;
+                   ret = false;
                 }
                 break;
             case ASSOCIATED:

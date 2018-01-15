@@ -162,7 +162,7 @@ uint8_t csm_hal_get_random_u8(uint8_t min, uint8_t max)
 
 
 // ==================================== FS FUNCTIONS ====================================
-
+/*
 typedef struct
 {
     uint8_t sap; //!< Sap number of the association
@@ -197,7 +197,7 @@ static const cfg_cosem cDefaultSap[] = {
 
 #define CFG_COSEM_NB_ASSOS  (sizeof(cDefaultSap)/sizeof(cfg_cosem))
 
-
+*/
 
 
 
