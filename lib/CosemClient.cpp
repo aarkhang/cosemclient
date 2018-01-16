@@ -333,7 +333,7 @@ bool CosemClient::Pass3And4(Meter &meter)
     csm_request request;
     request.db_request.service = SVC_ACTION;
     request.type = SVC_REQUEST_NORMAL;
-    request.sender_invoke_id = 0xC1U;
+    request.sender_invoke_id = 0x41U;
 
     // For reception
     csm_array app_array;
@@ -341,6 +341,7 @@ bool CosemClient::Pass3And4(Meter &meter)
 
     // For data ciphering
     csm_array_init(&request.db_request.additional_data.data, &hash[0], cHashBufferSize, 0, 0);
+    request.db_request.additional_data.enable = TRUE;
 
     // Prepare additional data depending of the authentication level
 
