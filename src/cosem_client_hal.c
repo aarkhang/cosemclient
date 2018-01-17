@@ -10,6 +10,7 @@
 // Ciphering library
 #include "gcm.h"
 #include "md5.h"
+#include "sha1.h"
 #include "sha256.h"
 
 // Standard libraries
@@ -78,6 +79,12 @@ void csm_hal_md5(const uint8_t *input, uint32_t size, uint8_t *output)
 {
     mbedtls_md5(input, size, output);
 }
+
+void csm_hal_sha1(const uint8_t *input, uint32_t size, uint8_t *output)
+{
+    mbedtls_sha1(input, size, output);
+}
+
 
 void csm_hal_sha256(const uint8_t *input, uint32_t size, uint8_t *output)
 {

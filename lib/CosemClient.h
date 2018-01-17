@@ -83,7 +83,7 @@ private:
     std::string EncapsulateRequest(Meter &meter, csm_array *request);
     bool PerformCosemRead(Meter &meter);
     bool ConnectAarq(Meter &meter);
-    int AccessObject(Meter &meter, const Object &obj, csm_request &request, csm_array &app_array);
+    int AccessObject(Meter &meter, const Object &obj, csm_request &request, csm_response &response, csm_array &app_array);
 
 };
 

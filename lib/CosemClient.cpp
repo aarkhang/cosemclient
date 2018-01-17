@@ -317,10 +317,11 @@ bool HasGoodLlc(csm_array *array)
 
 bool CosemClient::Pass3And4(Meter &meter)
 {
-    static const uint32_t cHashBufferSize = 256U; // enough size to store max hash algorithm result: FIXME make it dependent of the supported algorithms
+    static const uint32_t cDigestBufferSize = 256U; // enough size to store max hash algorithm result: FIXME make it dependent of the supported algorithms
     bool retCode = false;
 
-    uint8_t hash[cHashBufferSize];
+    uint8_t digest_stoc[cDigestBufferSize];
+    uint8_t digest_ctos[cDigestBufferSize];
 
     Object obj;
 
@@ -330,6 +331,8 @@ bool CosemClient::Pass3And4(Meter &meter)
     obj.attribute_id = 1U;
     obj.dump = false;
 
+    // Prepare request
+    csm_response response;
     csm_request request;
     request.db_request.service = SVC_ACTION;
     request.type = SVC_REQUEST_NORMAL;
@@ -339,54 +342,61 @@ bool CosemClient::Pass3And4(Meter &meter)
     csm_array app_array;
     csm_array_init(&app_array, &mAppBuffer[0], cAppBufferSize, 0, 0);
 
-    // For data ciphering
-    csm_array_init(&request.db_request.additional_data.data, &hash[0], cHashBufferSize, 0, 0);
-    request.db_request.additional_data.enable = TRUE;
 
-    // Prepare additional data depending of the authentication level
+    uint32_t digest_size = 0U;
 
-    bool valid = false;
-
-    if ((mAssoState.auth_level == CSM_AUTH_HIGH_LEVEL) ||  (mAssoState.auth_level == CSM_AUTH_HIGH_LEVEL_MD5) ||
-            (mAssoState.auth_level == CSM_AUTH_HIGH_LEVEL_GMAC))
+    // The following three levels are basically the same mechanism
+    if ((mAssoState.auth_level == CSM_AUTH_HIGH_LEVEL) ||
+        (mAssoState.auth_level == CSM_AUTH_HIGH_LEVEL_MD5) ||
+        (mAssoState.auth_level == CSM_AUTH_HIGH_LEVEL_SHA1))
     {
-        uint8_t digest[32]; // max size for SHA256
-        uint32_t digest_size = 16U; // default MD5
+        uint8_t input_stoc[64U + 16U]; // max size of challenge + size of secret
+        uint32_t input_stoc_size = mAssoState.handshake.stoc.size + 16U;
 
-        uint8_t input[64U + 16U]; // max size of challenge + size of secret
-        uint32_t input_size = mAssoState.handshake.stoc.size + 16U;
+        // Also compute our challenge
+        uint8_t input_ctos[64U + 16U]; // max size of challenge + size of secret
+        uint32_t input_ctos_size = mAssoState.handshake.ctos.size + 16U;
 
         // Prepare packet
-        memcpy(&input[0], &mAssoState.handshake.stoc.value[0U], mAssoState.handshake.stoc.size);
-        hex2bin(meter.cosem.auth_hls_secret.c_str(),  (char* )&input[mAssoState.handshake.stoc.size], 32U);
+        memcpy(&input_stoc[0], &mAssoState.handshake.stoc.value[0U], mAssoState.handshake.stoc.size);
+        hex2bin(meter.cosem.auth_hls_secret.c_str(),  (char* )&input_stoc[mAssoState.handshake.stoc.size], 32U);
+
+        // Prepare packet
+        memcpy(&input_ctos[0], &mAssoState.handshake.ctos.value[0U], mAssoState.handshake.ctos.size);
+        hex2bin(meter.cosem.auth_hls_secret.c_str(),  (char* )&input_ctos[mAssoState.handshake.ctos.size], 32U);
 
         // Compute digest
         if (mAssoState.auth_level == CSM_AUTH_HIGH_LEVEL_MD5)
         {
             // MD5(StoC || HLS Secret)
-            csm_hal_md5(&input[0U], input_size, &digest[0U]);
-            std::cout << "** Computed digest for MD5/Pass 3: " << std::flush;
+            csm_hal_md5(&input_stoc[0U], input_stoc_size, &digest_stoc[0U]);
+            csm_hal_md5(&input_ctos[0U], input_ctos_size, &digest_ctos[0U]);
+            digest_size = 16U;
+            std::cout << "** Digest MD5: " << std::flush;
+        }
+        if (mAssoState.auth_level == CSM_AUTH_HIGH_LEVEL_SHA1)
+        {
+           // SHA1(StoC || HLS Secret)
+            csm_hal_sha1(&input_stoc[0U], input_stoc_size, &digest_stoc[0U]);
+            csm_hal_sha1(&input_ctos[0U], input_ctos_size, &digest_ctos[0U]);
+           digest_size = 20U;
+           std::cout << "** Digest SHA1: " << std::flush;
         }
         else
         {
             // Custom authentication: SHA256 (StoC || HLS Secret)
-            csm_hal_sha256(&input[0U], input_size, &digest[0U]);
+            csm_hal_sha1(&input_stoc[0U], input_stoc_size, &digest_stoc[0U]);
+            csm_hal_sha1(&input_ctos[0U], input_ctos_size, &digest_ctos[0U]);
             digest_size = 32U;
-            std::cout << "** Computed digest for SHA256 (Manufacturer)/Pass 3: " << std::flush;
+            std::cout << "** Digest SHA256 (Manufacturer): " << std::flush;
         }
 
-        Transport::Printer((char*)&digest[0U], digest_size, PRINT_HEX);
+        std::cout << "** Computed StoC: ";
+        Transport::Printer((char*)&digest_stoc[0U], digest_size, PRINT_HEX);
+        std::cout << std::endl << "** Computed CtoS: ";
+        Transport::Printer((char*)&digest_ctos[0U], digest_size, PRINT_HEX);
         std::cout << std::endl;
 
-        if (csm_axdr_wr_octetstring(&request.db_request.additional_data.data, &digest[0], digest_size))
-        {
-            valid = true;
-        }
-    }
-    else if (mAssoState.auth_level == CSM_AUTH_HIGH_LEVEL_SHA1)
-    {
-        // FIXME
-        std::cout << "** HLS4/SHA1 not implemented!" << std::flush;
     }
     else if (mAssoState.auth_level == CSM_AUTH_HIGH_LEVEL_GMAC)
     {
@@ -403,13 +413,41 @@ bool CosemClient::Pass3And4(Meter &meter)
         std::cout << "** Authentication pass 3 failure: mechanism not supported." << std::endl;
     }
 
-    if (valid)
+    // Initialize data array for Action SET part
+    csm_array_init(&request.db_request.additional_data.data, &digest_stoc[0], cDigestBufferSize, digest_size, 0);
+    request.db_request.additional_data.enable = TRUE;
+
+    // Send Action, parse result (GET part)
+    if (AccessObject(meter, obj, request, response, app_array))
     {
-        // Send Action, parse result
-        if (AccessObject(meter, obj, request, app_array))
+        // first, test if action is OK and has some data
+        // Data in response contains the secured CtoS challenge
+        // The size depends on the level used
+        if ((response.access_result == CSM_ACCESS_RESULT_SUCCESS) &&
+            (response.has_data == TRUE) &&
+            (csm_array_written(&app_array) == digest_size))
         {
-            // FIXME: parse result, test received digest
-            retCode = true;
+            std::cout << "** Recieved CtoS: ";
+            Transport::Printer((char*)csm_array_rd_data(&app_array), digest_size, PRINT_HEX);
+            std::cout << std::endl;
+
+            // Now compute the CtoS digest with the one we have computed
+            // FIXME: in GMAC, there is a security header
+            if (!std::memcmp(csm_array_rd_data(&app_array), &digest_ctos[0U], digest_size))
+            {
+                std::cout << "** HLS Pass 3 and 4 success! " << std::endl;
+                retCode = true;
+            }
+            else
+            {
+                std::cout << "** HLS Pass 4 failure: bad received CtoS." << std::endl;
+                retCode = false;
+            }
+        }
+        else
+        {
+            std::cout << "** Bad Action response for HLS Pass 3/4." << std::endl;
+            retCode = false;
         }
     }
 
@@ -651,7 +689,7 @@ void DateToCosem(std::tm &date, csm_array *array)
 }
 
 
-int CosemClient::AccessObject(Meter &meter, const Object &obj, csm_request &request, csm_array &app_array)
+int CosemClient::AccessObject(Meter &meter, const Object &obj, csm_request &request, csm_response &response, csm_array &app_array)
 {
     int ret = 1;
     bool allowSelectiveAccess = false;
@@ -784,7 +822,6 @@ int CosemClient::AccessObject(Meter &meter, const Object &obj, csm_request &requ
 
         std::string request_data = EncapsulateRequest(meter, &scratch_array);
         std::string data;
-        csm_response response;
         bool loop = true;
         bool dump = false;
 
@@ -1046,6 +1083,7 @@ bool  CosemClient::PerformCosemRead(Meter &meter)
                     Object obj = mConf.list[mReadIndex];
 
                     csm_request request;
+                    csm_response response;
                     request.db_request.service = SVC_GET;
                     request.type = SVC_REQUEST_NORMAL;
                     request.sender_invoke_id = 0xC1U;
@@ -1053,7 +1091,7 @@ bool  CosemClient::PerformCosemRead(Meter &meter)
                     csm_array app_array;
                     csm_array_init(&app_array, &mAppBuffer[0], cAppBufferSize, 0, 0);
 
-                    (void) AccessObject(meter, obj, request, app_array);
+                    (void) AccessObject(meter, obj, request, response, app_array);
                     ret = true;
 
                     mReadIndex++;
