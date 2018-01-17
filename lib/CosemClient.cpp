@@ -385,8 +385,8 @@ bool CosemClient::Pass3And4(Meter &meter)
         else
         {
             // Custom authentication: SHA256 (StoC || HLS Secret)
-            csm_hal_sha1(&input_stoc[0U], input_stoc_size, &digest_stoc[0U]);
-            csm_hal_sha1(&input_ctos[0U], input_ctos_size, &digest_ctos[0U]);
+            csm_hal_sha256(&input_stoc[0U], input_stoc_size, &digest_stoc[0U]);
+            csm_hal_sha256(&input_ctos[0U], input_ctos_size, &digest_ctos[0U]);
             digest_size = 32U;
             std::cout << "** Digest SHA256 (Manufacturer): " << std::endl;
         }
