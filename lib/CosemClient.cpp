@@ -372,7 +372,7 @@ bool CosemClient::Pass3And4(Meter &meter)
             csm_hal_md5(&input_stoc[0U], input_stoc_size, &digest_stoc[0U]);
             csm_hal_md5(&input_ctos[0U], input_ctos_size, &digest_ctos[0U]);
             digest_size = 16U;
-            std::cout << "** Digest MD5: " << std::flush;
+            std::cout << "** Digest MD5: " << std::endl;
         }
         if (mAssoState.auth_level == CSM_AUTH_HIGH_LEVEL_SHA1)
         {
@@ -380,7 +380,7 @@ bool CosemClient::Pass3And4(Meter &meter)
             csm_hal_sha1(&input_stoc[0U], input_stoc_size, &digest_stoc[0U]);
             csm_hal_sha1(&input_ctos[0U], input_ctos_size, &digest_ctos[0U]);
            digest_size = 20U;
-           std::cout << "** Digest SHA1: " << std::flush;
+           std::cout << "** Digest SHA1: " << std::endl;
         }
         else
         {
@@ -388,7 +388,7 @@ bool CosemClient::Pass3And4(Meter &meter)
             csm_hal_sha1(&input_stoc[0U], input_stoc_size, &digest_stoc[0U]);
             csm_hal_sha1(&input_ctos[0U], input_ctos_size, &digest_ctos[0U]);
             digest_size = 32U;
-            std::cout << "** Digest SHA256 (Manufacturer): " << std::flush;
+            std::cout << "** Digest SHA256 (Manufacturer): " << std::endl;
         }
 
         std::cout << "** Computed StoC: ";
@@ -396,7 +396,6 @@ bool CosemClient::Pass3And4(Meter &meter)
         std::cout << std::endl << "** Computed CtoS: ";
         Transport::Printer((char*)&digest_ctos[0U], digest_size, PRINT_HEX);
         std::cout << std::endl;
-
     }
     else if (mAssoState.auth_level == CSM_AUTH_HIGH_LEVEL_GMAC)
     {
@@ -413,41 +412,59 @@ bool CosemClient::Pass3And4(Meter &meter)
         std::cout << "** Authentication pass 3 failure: mechanism not supported." << std::endl;
     }
 
-    // Initialize data array for Action SET part
-    csm_array_init(&request.db_request.additional_data.data, &digest_stoc[0], cDigestBufferSize, digest_size, 0);
-    request.db_request.additional_data.enable = TRUE;
-
-    // Send Action, parse result (GET part)
-    if (AccessObject(meter, obj, request, response, app_array))
+    if (digest_size > 0U)
     {
-        // first, test if action is OK and has some data
-        // Data in response contains the secured CtoS challenge
-        // The size depends on the level used
-        if ((response.access_result == CSM_ACCESS_RESULT_SUCCESS) &&
-            (response.has_data == TRUE) &&
-            (csm_array_written(&app_array) == digest_size))
-        {
-            std::cout << "** Recieved CtoS: ";
-            Transport::Printer((char*)csm_array_rd_data(&app_array), digest_size, PRINT_HEX);
-            std::cout << std::endl;
+        // Initialize data array for Action SET part
+        csm_array_init(&request.db_request.additional_data.data, &mAppBuffer[0], cAppBufferSize, 0, 0);
+        request.db_request.additional_data.enable = TRUE;
 
-            // Now compute the CtoS digest with the one we have computed
-            // FIXME: in GMAC, there is a security header
-            if (!std::memcmp(csm_array_rd_data(&app_array), &digest_ctos[0U], digest_size))
-            {
-                std::cout << "** HLS Pass 3 and 4 success! " << std::endl;
-                retCode = true;
-            }
-            else
-            {
-                std::cout << "** HLS Pass 4 failure: bad received CtoS." << std::endl;
-                retCode = false;
-            }
-        }
-        else
+        if (csm_axdr_wr_octetstring(&request.db_request.additional_data.data, &digest_stoc[0], digest_size))
         {
-            std::cout << "** Bad Action response for HLS Pass 3/4." << std::endl;
-            retCode = false;
+            // Send Action, parse result (GET part)
+            if (AccessObject(meter, obj, request, response, app_array))
+            {
+                // first, test if action is OK and has some data
+                // Data in response contains the secured CtoS challenge
+                // The size depends on the level used
+                if ((response.access_result == CSM_ACCESS_RESULT_SUCCESS) &&
+                    (response.has_data == TRUE))
+                {
+                    // Get digest
+                    uint32_t size;
+                    int valid = csm_axdr_rd_octetstring(&app_array, &size);
+                    valid = valid && (digest_size == size);
+
+                    if (valid)
+                    {
+                        std::cout << "** Recieved CtoS: ";
+                        Transport::Printer((char*)csm_array_rd_data(&app_array), digest_size, PRINT_HEX);
+                        std::cout << std::endl;
+
+                        // Now compute the CtoS digest with the one we have computed
+                        // FIXME: in GMAC, there is a security header
+                        if (!std::memcmp(csm_array_rd_data(&app_array), &digest_ctos[0U], digest_size))
+                        {
+                            std::cout << "** HLS Pass 3 and 4 success! " << std::endl;
+                            retCode = true;
+                        }
+                        else
+                        {
+                            std::cout << "** HLS Pass 4 failure: bad received CtoS." << std::endl;
+                            retCode = false;
+                        }
+                    }
+                    else
+                    {
+                        std::cout << "** Bad Action response data size or contents for HLS Pass 3/4." << std::endl;
+                        retCode = false;
+                    }
+                }
+                else
+                {
+                    std::cout << "** Bad Action response for HLS Pass 3/4." << std::endl;
+                    retCode = false;
+                }
+            }
         }
     }
 
