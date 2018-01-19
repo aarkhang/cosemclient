@@ -535,6 +535,7 @@ bool CosemClient::ConnectAarq(Meter &meter)
                         if (mAssoState.auth_level <= CSM_AUTH_LOW_LEVEL)
                         {
                             std::cout << "** Authentication success: access granted." << std::endl;
+                            retCode = true;
                         }
                         else if (mAssoState.auth_level > CSM_AUTH_LOW_LEVEL)
                         {
