@@ -557,7 +557,6 @@ Result CosemClient::ConnectAarq(Meter &meter)
                         if (mAssoState.auth_level <= CSM_AUTH_LOW_LEVEL)
                         {
                             std::cout << "** Authentication success: access granted." << std::endl;
-                            retCode = true;
                         }
                         else if (mAssoState.auth_level > CSM_AUTH_LOW_LEVEL)
                         {
@@ -599,6 +598,10 @@ Result CosemClient::ConnectAarq(Meter &meter)
         {
             result.SetError("** Cannot send/receive Cosem AARQ/AARE");
         }
+    }
+    else
+    {
+        result.SetError("** Internal error: cannot encode Cosem AARQ frame");
     }
     return result;
 }
