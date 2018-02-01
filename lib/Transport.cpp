@@ -61,10 +61,6 @@ bool Transport::Open(const Transport::Params &params)
             ret = true;
         }
     }
-    if (!ret)
-    {
-        printf("** Cannot open serial port.\r\n");
-    }
 
     return ret;
 }

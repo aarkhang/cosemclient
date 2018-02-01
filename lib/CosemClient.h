@@ -31,6 +31,25 @@ struct Compare
     std::string data;
 };
 
+struct Result
+{
+    Result()
+        : success(true)
+    {
+
+    }
+
+    void SetError(const std::string &msg)
+    {
+        success = false;
+        diagnostic = msg;
+    }
+
+    bool success;
+    std::string subject;
+    std::string diagnostic;
+};
+
 
 class CosemClient
 {
@@ -50,7 +69,7 @@ public:
 
     std::string ResultToString(csm_data_access_result result);
 
-
+    void PrintResult();
     std::string GetLls();
 
 private:
@@ -76,15 +95,16 @@ private:
     Transport mTransport;
     csm_asso_state mAssoState;
 
+    std::vector<Result> mResults;
+
     std::string AuthResultToString(enum csm_asso_result result);
-    bool Pass3And4(Meter &meter);
+    Result Pass3And4(Meter &meter);
     int ConnectHdlc(Meter &meter);
     bool HdlcProcess(Meter &meter, const std::string &send, std::string &rcv, int timeout);
     std::string EncapsulateRequest(Meter &meter, csm_array *request);
     bool PerformCosemRead(Meter &meter);
-    bool ConnectAarq(Meter &meter);
-    int AccessObject(Meter &meter, const Object &obj, csm_request &request, csm_response &response, csm_array &app_array);
-
+    Result ConnectAarq(Meter &meter);
+    Result AccessObject(Meter &meter, const Object &obj, csm_request &request, csm_response &response, csm_array &app_array);
 };
 
 #endif // COSEM_CLIENT_H

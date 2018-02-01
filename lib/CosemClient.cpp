@@ -47,6 +47,9 @@ bool CosemClient::Initialize(const std::string &commFile, const std::string &obj
 
     Transport::Params params;
 
+    Result result;
+    result.subject = "OPEN COM PORT";
+
     mConf.ParseComFile(commFile, params);
     mConf.ParseObjectsFile(objectsFile);
     mConf.ParseSessionFile(meterFile);
@@ -66,6 +69,13 @@ bool CosemClient::Initialize(const std::string &commFile, const std::string &obj
     if (ok)
     {
         mTransport.Start();
+    }
+    else
+    {
+        std::stringstream ss;
+        ss << "** Cannot open serial port " << params.port << " at " << params.baudrate << " bauds";
+        result.SetError(ss.str());
+        mResults.push_back(result);
     }
     return ok;
 }
@@ -315,10 +325,11 @@ bool HasGoodLlc(csm_array *array)
 }
 
 
-bool CosemClient::Pass3And4(Meter &meter)
+Result CosemClient::Pass3And4(Meter &meter)
 {
     static const uint32_t cDigestBufferSize = 256U; // enough size to store max hash algorithm result: FIXME make it dependent of the supported algorithms
-    bool retCode = false;
+    Result result;
+    result.subject = "CONNECT COSEM (AARQ Pass 3)";
 
     uint8_t digest_stoc[cDigestBufferSize];
     uint8_t digest_ctos[cDigestBufferSize];
@@ -400,16 +411,16 @@ bool CosemClient::Pass3And4(Meter &meter)
     else if (mAssoState.auth_level == CSM_AUTH_HIGH_LEVEL_GMAC)
     {
         // FIXME
-        std::cout << "** HLS5/GMAC not implemented!" << std::flush;
+        result.SetError("** HLS5/GMAC not implemented!");
     }
     else if (mAssoState.auth_level == CSM_AUTH_HIGH_LEVEL_SHA256)
     {
         // FIXME
-        std::cout << "** SHA256/GMAC not implemented!" << std::flush;
+        result.SetError("** SHA256/GMAC not implemented!");
     }
     else
     {
-        std::cout << "** Authentication pass 3 failure: mechanism not supported." << std::endl;
+        result.SetError("** Authentication pass 3 failure: mechanism not supported.");
     }
 
     if (digest_size > 0U)
@@ -421,8 +432,10 @@ bool CosemClient::Pass3And4(Meter &meter)
         if (csm_axdr_wr_octetstring(&request.db_request.additional_data.data, &digest_stoc[0], digest_size))
         {
             // Send Action, parse result (GET part)
-            if (AccessObject(meter, obj, request, response, app_array))
+            result = AccessObject(meter, obj, request, response, app_array);
+            if (result.success)
             {
+                result.subject = "CONNECT COSEM (AARQ Pass 4)";
                 // first, test if action is OK and has some data
                 // Data in response contains the secured CtoS challenge
                 // The size depends on the level used
@@ -445,30 +458,38 @@ bool CosemClient::Pass3And4(Meter &meter)
                         if (!std::memcmp(csm_array_rd_data(&app_array), &digest_ctos[0U], digest_size))
                         {
                             std::cout << "** HLS Pass 3 and 4 success! " << std::endl;
-                            retCode = true;
                         }
                         else
                         {
-                            std::cout << "** HLS Pass 4 failure: bad received CtoS." << std::endl;
-                            retCode = false;
+                            result.SetError("** HLS Pass 4 failure: bad received CtoS.");
                         }
                     }
                     else
                     {
-                        std::cout << "** Bad Action response data size or contents for HLS Pass 3/4." << std::endl;
-                        retCode = false;
+                        result.SetError("** Bad Action response data size or contents for HLS Pass 3/4.");
                     }
                 }
                 else
                 {
-                    std::cout << "** Bad Action response for HLS Pass 3/4." << std::endl;
-                    retCode = false;
+                    result.SetError("** Bad Action response for HLS Pass 3/4.");
                 }
             }
+            else
+            {
+                // Error string diagnostic is set elsewhere
+            }
+        }
+        else
+        {
+            result.SetError("** Internal error, code 42.");
         }
     }
+    else
+    {
+        // Error string diagnostic is set elsewhere
+    }
 
-    return retCode;
+    return result;
 }
 
 std::string CosemClient::AuthResultToString(enum csm_asso_result result)
@@ -503,9 +524,10 @@ std::string CosemClient::AuthResultToString(enum csm_asso_result result)
     return ss.str();
 }
 
-bool CosemClient::ConnectAarq(Meter &meter)
+Result CosemClient::ConnectAarq(Meter &meter)
 {
-    bool retCode = false;
+    Result result;
+    result.subject = "CONNECT COSEM (AARQ)";
 
     csm_array scratch_array;
     csm_array_init(&scratch_array, &mScratch[0], cBufferSize, 0, 3);
@@ -541,39 +563,43 @@ bool CosemClient::ConnectAarq(Meter &meter)
                             if (mAssoState.handshake.result == CSM_ASSO_AUTH_REQUIRED)
                             {
                                 std::cout << "** High authentication: Starting pass 3." << std::endl;
-                                retCode = Pass3And4(meter);
+                                result = Pass3And4(meter);
                             }
                             else
                             {
-                                std::cout << "** FAILURE: result must be in state: authentication-required" << std::endl;
+                                result.SetError("** FAILURE: result must be in state: authentication-required");
                             }
                         }
                         else
                         {
-                            std::cout << "** FAILURE: " << AuthResultToString(mAssoState.handshake.result) << std::endl;
+                            std::stringstream ss;
+                            ss <<  "** FAILURE: " << AuthResultToString(mAssoState.handshake.result);
+                            result.SetError(ss.str());
                         }
                     }
                     else
                     {
-                        std::cout << "** FAILURE: " << AuthResultToString(mAssoState.handshake.result) << std::endl;
+                        std::stringstream ss;
+                        ss << "** FAILURE: " << AuthResultToString(mAssoState.handshake.result);
+                        result.SetError(ss.str());
                     }
                 }
                 else
                 {
-                    std::cout << "** Cannot decode Cosem AARE" << std::endl;
+                    result.SetError("** Cannot decode Cosem AARE");
                 }
             }
             else
             {
-                std::cout << "** Not a valid Cosem AARE LLC" << std::endl;
+                result.SetError("** Not a valid Cosem AARE LLC");
             }
         }
         else
         {
-            std::cout << "** Cannot send/receive Cosem AARQ/AARE" << std::endl;
+            result.SetError("** Cannot send/receive Cosem AARQ/AARE");
         }
     }
-    return retCode;
+    return result;
 }
 
 std::string CosemClient::GetLls()
@@ -706,9 +732,12 @@ void DateToCosem(std::tm &date, csm_array *array)
 }
 
 
-int CosemClient::AccessObject(Meter &meter, const Object &obj, csm_request &request, csm_response &response, csm_array &app_array)
+Result CosemClient::AccessObject(Meter &meter, const Object &obj, csm_request &request, csm_response &response, csm_array &app_array)
 {
-    int ret = 1;
+    Result result;
+
+    result.subject = obj.name;
+
     bool allowSelectiveAccess = false;
     bool hasEndDate = false;
 
@@ -826,14 +855,14 @@ int CosemClient::AccessObject(Meter &meter, const Object &obj, csm_request &requ
     }
     else
     {
-        ret = 0;
+        result.SetError("Bad Cosem OBIS code format");
     }
     request.db_request.logical_name.id = obj.attribute_id;
 
     csm_array scratch_array;
     csm_array_init(&scratch_array, &mScratch[0], cBufferSize, 0, 3);
 
-    if (ret && svc_request_encoder(&request, &scratch_array))
+    if (result.success && svc_request_encoder(&request, &scratch_array))
     {
         std::cout << "** Sending request for object: " << obj.name << std::endl;
 
@@ -941,58 +970,64 @@ int CosemClient::AccessObject(Meter &meter, const Object &obj, csm_request &requ
                             // BAD response from meter, filter why
                             if (response.service == SVC_GET)
                             {
-                                std::cout << "** Data access result: " << ResultToString(response.access_result) << std::endl;
+                                std::stringstream ss;
+                                ss << "** Data access result: " << ResultToString(response.access_result);
+                                result.SetError(ss.str());
+
                                 // Try to save work anyway
                                 dump = true;
                             }
                             else if (response.service == SVC_EXCEPTION)
                             {
-                                std::cout << "** Received exception from meter: ";
+                                std::stringstream ss;
+                                ss << "** Received exception from meter: ";
 
                                 if (response.exception.state_err == 1)
                                 {
-                                    std::cout << "Service not allowed.";
+                                    ss << "Service not allowed.";
                                 }
                                 else
                                 {
-                                    std::cout << "Service unknown.";
+                                    ss << "Service unknown.";
                                 }
 
                                 if (response.exception.service_err == 1)
                                 {
-                                    std::cout << "Operation not possible." << std::endl;
+                                    ss << "Operation not possible.";
                                 }
                                 else if (response.exception.service_err == 2)
                                 {
-                                    std::cout << "Service not supported." << std::endl;
+                                    ss << "Service not supported.";
                                 }
                                 else
                                 {
-                                    std::cout << "Other reason." << std::endl;
+                                    ss << "Other reason.";
                                 }
+
+                                result.SetError(ss.str());
                             }
                             else
                             {
-                                std::cout << "** Error, service not found! " << std::endl;
+                                result.SetError("** Error, service not found! ");
                             }
                             loop = false;
                         }
                     }
                     else
                     {
-                        std::cout << "** Cannot decode Cosem response" << std::endl;
+                        result.SetError("** Cannot decode Cosem response");
                         loop = false;
                     }
                 }
                 else
                 {
-                    std::cout << "** Not a compliant HDLC LLC" << std::endl;
+                    result.SetError("** Not a compliant HDLC LLC");
                     loop = false;
                 }
             }
             else
             {
-                std::cout << "** Cannot get HDLC data" << std::endl;
+                result.SetError("** Cannot get HDLC data");
                 loop = false;
             }
         }
@@ -1029,10 +1064,9 @@ int CosemClient::AccessObject(Meter &meter, const Object &obj, csm_request &requ
             }
            // print_hex((const char *)&mAppBuffer[0], csm_array_written(&app_array));
         }
-
     }
 
-    return ret;
+    return result;
 }
 
 bool  CosemClient::PerformCosemRead(Meter &meter)
@@ -1046,6 +1080,9 @@ bool  CosemClient::PerformCosemRead(Meter &meter)
         switch(mCosemState)
         {
             case CONNECT_HDLC:
+            {
+                Result result;
+                result.subject = "CONNECT HDLC";
                 printf("** Sending HDLC SNRM (addr: %d)...\r\n", meter.hdlc.phy_address);
                 if (ConnectHdlc(meter) > 0)
                 {
@@ -1067,7 +1104,8 @@ bool  CosemClient::PerformCosemRead(Meter &meter)
                         }
                         else
                         {
-                            printf("** Cannot connect to meter.\r\n");
+                            result.SetError("** Cannot connect to meter.");
+                            mResults.push_back(result);
                             ret = false;
                         }
                     }
@@ -1076,11 +1114,13 @@ bool  CosemClient::PerformCosemRead(Meter &meter)
                         ret = true;
                     }
                 }
+            }
              break;
             case ASSOCIATION_PENDING:
-
+            {
                 printf("** Sending AARQ...\r\n");
-                if (ConnectAarq(meter))
+                Result result = ConnectAarq(meter);
+                if (result.success)
                 {
                    printf("** AARQ success!\r\n");
                    ret = true;
@@ -1089,10 +1129,11 @@ bool  CosemClient::PerformCosemRead(Meter &meter)
                 }
                 else
                 {
-                   std::cout << "** Cannot associate to meter." << std::endl;
+                   mResults.push_back(result);
                    ret = false;
                 }
                 break;
+            }
             case ASSOCIATED:
             {
                 if (mReadIndex < mConf.list.size())
@@ -1108,8 +1149,14 @@ bool  CosemClient::PerformCosemRead(Meter &meter)
                     csm_array app_array;
                     csm_array_init(&app_array, &mAppBuffer[0], cAppBufferSize, 0, 0);
 
-                    (void) AccessObject(meter, obj, request, response, app_array);
-                    ret = true;
+                    Result result = AccessObject(meter, obj, request, response, app_array);
+
+                    if (result.success)
+                    {
+                        std::cout << "Object: " << result.subject << " access success!" << std::endl;
+                    }
+
+                    mResults.push_back(result);
 
                     mReadIndex++;
                 }
@@ -1131,6 +1178,61 @@ bool  CosemClient::PerformCosemRead(Meter &meter)
 }
 
 
+std::string now( const char* format = "%c" )
+{
+    std::time_t t = std::time(0) ;
+    char cstr[128] ;
+    std::strftime( cstr, sizeof(cstr), format, std::localtime(&t) ) ;
+    return cstr ;
+}
+
+void CosemClient::PrintResult()
+{
+    std::string dirName = "result";
+    std::string dateTime = now("_%Y%m%d_%H%M%S.xml");
+    std::string fileName = dirName + Util::DIR_SEPARATOR + "result" + dateTime;
+
+    std::cout << "=============================   RESULT  ============================= " << std::endl;
+
+    std::fstream f;
+
+    Util::Mkdir(dirName);
+    f.open(fileName, std::ios_base::out | std::ios_base::binary);
+
+    if (f.is_open())
+    {
+        if (mResults.size() > 0U)
+        {
+            f << "<Result status=\"failure\">" << std::endl;
+            std::cout << "One or more problem was found." << std::endl;
+            for (uint32_t i; i < mResults.size(); i++)
+            {
+               if (!mResults[i].success)
+               {
+                   std::stringstream ss;
+                   ss << "Task: " << mResults[i].subject << " access failure: " << mResults[i].diagnostic << std::endl;
+                   std::cout << ss.str() << std::endl;
+                   f << "    <Diagnostic>" << ss.str() << "</Diagnostic>" << std::endl;
+               }
+            }
+
+            f << "</Result>" << std::endl;
+        }
+        else
+        {
+            f << "<Result status=\"success\" />" << std::endl;
+        }
+
+        std::cout << "Result file generated: " << fileName << std::endl;
+        f.close();
+    }
+    else
+    {
+       std::cout << "Cannot create result file!" << std::endl;
+    }
+
+}
+
 // Global state chart
 bool CosemClient::PerformTask()
 {
@@ -1141,16 +1243,20 @@ bool CosemClient::PerformTask()
         case DISCONNECTED:
         {
             std::string modemReply;
+            Result result;
+            result.subject = "MODEM TEST";
+
             if (SendModem(mConf.modem.init + "\r\n", "OK", modemReply, 2U) > 0)
             {
-                printf("** Modem test success!\r\n");
+                std::cout << "** Modem test success!" << std::endl;
 
                 mModemState = DIAL;
                 ret = true;
             }
             else
             {
-                printf("** Modem test failed.\r\n");
+                result.SetError("** Modem test failed.");
+                mResults.push_back(result);
             }
 
             break;
@@ -1158,12 +1264,15 @@ bool CosemClient::PerformTask()
 
         case DIAL:
         {
+            Result result;
+            result.subject = "MODEM DIAL";
+
             std::cout << "** Dial: " << mConf.modem.phone << std::endl;
             std::string dialRequest = std::string("ATD") + mConf.modem.phone + std::string("\r\n");
             std::string modemReply;
             if (SendModem(dialRequest, "CONNECT", modemReply, mConf.timeout_dial))
             {
-               printf("** Modem dial success!\r\n");
+               std::cout << "** Modem dial success!" << std::endl;
                ret = true;
                mModemState = CONNECTED;
             }
@@ -1171,12 +1280,15 @@ bool CosemClient::PerformTask()
             {
                 if (modemReply.size())
                 {
-                    std::cout << "** Dial failed, modem response: " << modemReply << std::endl;
+                    std::stringstream ss;
+                    ss << "** Dial failed, modem response: " << modemReply;
+                    result.SetError(ss.str());
                 }
                 else
                 {
-                    std::cout << "** Dial failed: no response from modem." << std::endl;
+                    result.SetError("** Dial failed: no response from modem.");
                 }
+                mResults.push_back(result);
             }
 
             break;

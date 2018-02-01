@@ -28,8 +28,6 @@ extern "C" void csm_hal_get_lls_password(uint8_t sap, uint8_t *array, uint8_t ma
     lls.copy((char*)array, size);
 }
 
-#define COSEM_CLIENT_VER    "1.0.0"
-
 int main(int argc, char **argv)
 {
     setbuf(stdout, NULL); // disable printf buffering
@@ -57,6 +55,8 @@ int main(int argc, char **argv)
         {
             while (client.PerformTask());
         }
+
+        client.PrintResult();
     }
     else
     {
