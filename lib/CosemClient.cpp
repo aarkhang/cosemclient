@@ -259,11 +259,18 @@ bool CosemClient::SendModem(const std::string &command, const std::string &expec
                 Transport::Printer(data.c_str(), data.size(), PRINT_RAW);
                 modemReply += data;
 
+                // Wait again, if there is remaing data
+                if (mTransport.WaitForData(data, 2U))
+                {
+                    modemReply += data;
+                }
+
                 if (modemReply.find(expected) != std::string::npos)
                 {
-                    loop = false;
                     retCode = true;
                 }
+
+                loop = false;
             }
             else
             {
@@ -874,6 +881,7 @@ Result CosemClient::AccessObject(Meter &meter, const Object &obj, csm_request &r
         std::string data;
         bool loop = true;
         bool dump = false;
+        uint32_t retries = 0U;
 
         do
         {
@@ -1031,8 +1039,12 @@ Result CosemClient::AccessObject(Meter &meter, const Object &obj, csm_request &r
             }
             else
             {
-                result.SetError("** Cannot get HDLC data");
-                loop = false;
+                retries++;
+                if (retries > mConf.retries)
+                {
+                    result.SetError("** Cannot get HDLC data");
+                    loop = false;
+                }
             }
         }
         while(loop);

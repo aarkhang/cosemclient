@@ -154,6 +154,7 @@ void Transport::Reader()
         {
             puts("Serial read error, exiting...\r\n");
             mTerminate = true;
+            exit(1);
         }
     }
 }
