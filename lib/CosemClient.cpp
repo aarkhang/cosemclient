@@ -106,6 +106,8 @@ bool CosemClient::HdlcProcess(Meter &meter, const std::string &send, std::string
 
     std::string dataToSend = send;
     std::string dataSent;
+    uint32_t retries = 0U;
+
     do
     {
         if (dataToSend.size() > 0)
@@ -134,6 +136,8 @@ bool CosemClient::HdlcProcess(Meter &meter, const std::string &send, std::string
         }
 
         std::string data;
+        hdlc_t hdlc;
+
         if (mTransport.WaitForData(data, timeout))
         {
             // We have something, add buffer
@@ -171,7 +175,6 @@ bool CosemClient::HdlcProcess(Meter &meter, const std::string &send, std::string
 
                 do
                 {
-                    hdlc_t hdlc;
                     hdlc.sender = HDLC_SERVER;
                     int ret = hdlc_decode(&hdlc, ptr, size);
                     if (ret == HDLC_OK)
@@ -195,48 +198,74 @@ bool CosemClient::HdlcProcess(Meter &meter, const std::string &send, std::string
                             {
                                 meter.hdlc.rrr = hdlc.sss + 1;
                             }
-                        }
 
-                        // Test if it is a last HDLC packet
-                        if ((hdlc.segmentation == 0U) &&
-                            (hdlc.poll_final == 1U))
-                        {
-                            puts("Final packet\r\n");
-
-                            retCode = true; // good Cosem packet
-                            loop = false; // quit
-                        }
-                        else if (hdlc.segmentation == 1U)
-                        {
-                            puts("Segmentation packet: ");
-                            hdlc_print_result(&hdlc, HDLC_OK);
-                            // There are remaining frames to be received.
-                            if (hdlc.poll_final == 1U)
+                            // Test if it is a last HDLC packet
+                            if ((hdlc.segmentation == 0U) &&
+                                (hdlc.poll_final == 1U))
                             {
-                                // Send RR
-                                hdlc.sender = HDLC_CLIENT;
-                                size = hdlc_encode_rr(&meter.hdlc, (uint8_t*)&mSndBuffer[0], cBufferSize);
-                                dataToSend.assign(&mSndBuffer[0], size);
+                                puts("Final packet\r\n");
+
+                                retCode = true; // good Cosem packet
+                                loop = false; // quit
                             }
+                            else if (hdlc.segmentation == 1U)
+                            {
+                                puts("Segmentation packet: ");
+                                hdlc_print_result(&hdlc, HDLC_OK);
+                                // There are remaining frames to be received.
+                                if (hdlc.poll_final == 1U)
+                                {
+                                    // Send RR
+                                    hdlc.sender = HDLC_CLIENT;
+                                    size = hdlc_encode_rr(&meter.hdlc, (uint8_t*)&mSndBuffer[0], cBufferSize);
+                                    dataToSend.assign(&mSndBuffer[0], size);
+                                }
+                            }
+
+                            // go to next frame, if any
+                            ptr = csm_array_rd_data(&mRcvArray);
+                            size = csm_array_unread(&mRcvArray);
+                        }
+                        else if (hdlc.type == HDLC_PACKET_TYPE_RR)
+                        {
+                            // Send again the request
+                            dataToSend = send;
+                        }
+                        else
+                        {
+                            puts("Not a I or RR packet, exit loop.\r\n");
+                            loop = false;
+                            retCode = false;
+                            size = 0U;
                         }
 
-                        // go to next frame, if any
-                        ptr = csm_array_rd_data(&mRcvArray);
-                        size = csm_array_unread(&mRcvArray);
                     }
                     else
                     {
                         // Maybe a partial packet, re-try later
                         size = 0U;
                     }
-                } while (size);
+                }
+                while (size);
             }
         }
         else
         {
-            // Timeout, we can't wait further for HDLC packets
-            retCode = false;
-            loop = false;
+            retries++;
+            if (retries > mConf.retries)
+            {
+                // Timeout, we can't wait further for HDLC packets
+                retCode = false;
+                loop = false;
+            }
+            else
+            {
+                // try to re-sync with server, send RR frame
+                // Send RR
+                hdlc.sender = HDLC_CLIENT;
+                uint32_t size = hdlc_encode_rr(&meter.hdlc, (uint8_t*)&mSndBuffer[0], cBufferSize);
+                dataToSend.assign(&mSndBuffer[0], size);
+            }
         }
     }
     while (loop);
