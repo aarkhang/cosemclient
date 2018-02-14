@@ -83,7 +83,7 @@ private:
 
     uint8_t mScratch[cBufferSize];
 
-    static const uint32_t cAppBufferSize = 200U*1024U;
+    static const uint32_t cAppBufferSize = 2000U*1024U;
     uint8_t mAppBuffer[cAppBufferSize];
 
     static const uint32_t cSelectiveAccessBufferSize = 256U;

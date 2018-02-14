@@ -90,18 +90,17 @@ int Transport::Send(const std::string &data, PrintFormat format)
 
 bool Transport::WaitForData(std::string &data, int timeout)
 {
-    bool notified = true;
-    std::unique_lock<std::mutex> lock(mMutex);
-    while (!mData.size())
+    bool notified = mSem.Wait(timeout*1000);
+
+    if (!notified)
     {
-        if (mCv.wait_for(lock, std::chrono::seconds(timeout)) == std::cv_status::timeout)
-        {
-            notified = false;
-            break;
-        }
+        puts("** Serial read timeout!\r\n");
     }
-    data = mData;
+
+    mMutex.lock();
+    data += mData;
     mData.clear();
+    mMutex.unlock();
 
     return notified;
 }
@@ -141,10 +140,8 @@ void Transport::Reader()
             mData += data;
             mMutex.unlock();
 
-            mCv.notify_one();
-
             // Signal new data available
-        //    mSem.notify();
+            mSem.Notify();
         }
         else if (ret == 0)
         {

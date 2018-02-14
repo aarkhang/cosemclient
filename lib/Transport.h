@@ -16,9 +16,9 @@
 #include <cstdint>
 #include <iostream>
 #include <thread>
-#include <condition_variable>
 #include <queue>
 #include <mutex>
+#include "Semaphore.h"
 
 enum PrintFormat
 {
@@ -76,7 +76,7 @@ private:
     std::string mData;
 
     std::thread mThread;
-    std::condition_variable mCv;
+    Semaphore mSem;
     std::mutex mMutex;
 
     static void EntryPoint(void *pthis);

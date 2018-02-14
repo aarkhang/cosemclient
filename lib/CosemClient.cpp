@@ -179,24 +179,35 @@ bool CosemClient::HdlcProcess(Meter &meter, const std::string &send, std::string
                     int ret = hdlc_decode(&hdlc, ptr, size);
                     if (ret == HDLC_OK)
                     {
-                        std::cout << "Good packet" << std::endl;
 
-                        // God packet! Copy to cosem data
-                        rcv.append((const char*)&ptr[hdlc.data_index], hdlc.data_size);
 
-                        // Continue with next one
-                        csm_array_reader_jump(&mRcvArray, hdlc.frame_size);
-
-                        if (hdlc.type == HDLC_PACKET_TYPE_I)
+                        if (hdlc.type == HDLC_PACKET_TYPE_RR)
                         {
-                            // ack last hdlc frame
-                            if (hdlc.sss == 7U)
+                           // Send again the request
+                            puts("RR sync, send again\r\n");
+                           dataToSend = send;
+                           size = 0U;
+                        }
+                        else
+                        {
+                            std::cout << "Data packet" << std::endl;
+                            // God packet! Copy to cosem data
+                            rcv.append((const char*)&ptr[hdlc.data_index], hdlc.data_size);
+
+                            // Continue with next one
+                            csm_array_reader_jump(&mRcvArray, hdlc.frame_size);
+
+                            if (hdlc.type == HDLC_PACKET_TYPE_I)
                             {
-                                meter.hdlc.rrr = 0U;
-                            }
-                            else
-                            {
-                                meter.hdlc.rrr = hdlc.sss + 1;
+                                // ack last hdlc frame
+                                if (hdlc.sss == 7U)
+                                {
+                                    meter.hdlc.rrr = 0U;
+                                }
+                                else
+                                {
+                                    meter.hdlc.rrr = hdlc.sss + 1;
+                                }
                             }
 
                             // Test if it is a last HDLC packet
@@ -226,19 +237,6 @@ bool CosemClient::HdlcProcess(Meter &meter, const std::string &send, std::string
                             ptr = csm_array_rd_data(&mRcvArray);
                             size = csm_array_unread(&mRcvArray);
                         }
-                        else if (hdlc.type == HDLC_PACKET_TYPE_RR)
-                        {
-                            // Send again the request
-                            dataToSend = send;
-                        }
-                        else
-                        {
-                            puts("Not a I or RR packet, exit loop.\r\n");
-                            loop = false;
-                            retCode = false;
-                            size = 0U;
-                        }
-
                     }
                     else
                     {
@@ -260,6 +258,8 @@ bool CosemClient::HdlcProcess(Meter &meter, const std::string &send, std::string
             }
             else
             {
+                puts("Try to resync\r\n");
+                csm_array_init(&mRcvArray, (uint8_t*)&mRcvBuffer[0], cBufferSize, 0U, 0U);
                 // try to re-sync with server, send RR frame
                 // Send RR
                 hdlc.sender = HDLC_CLIENT;
@@ -507,12 +507,14 @@ Result CosemClient::Pass3And4(Meter &meter)
                 }
                 else
                 {
-                    result.SetError("** Bad Action response for HLS Pass 3/4.");
+                    result.SetError("** Bad Action response for HLS Pass 3/4. (maybe a bad authentication key)");
                 }
             }
             else
             {
                 // Error string diagnostic is set elsewhere
+                // Add some clue for this context (authentication)
+                result.diagnostic += " (maybe a bad authentication key)";
             }
         }
         else
@@ -1009,14 +1011,12 @@ Result CosemClient::AccessObject(Meter &meter, const Object &obj, csm_request &r
                         else
                         {
                             // BAD response from meter, filter why
-                            if (response.service == SVC_GET)
+                            if ((response.service == SVC_GET) ||
+                                (response.service == SVC_ACTION))
                             {
                                 std::stringstream ss;
                                 ss << "** Data access result: " << ResultToString(response.access_result);
                                 result.SetError(ss.str());
-
-                                // Try to save work anyway
-                                dump = true;
                             }
                             else if (response.service == SVC_EXCEPTION)
                             {
