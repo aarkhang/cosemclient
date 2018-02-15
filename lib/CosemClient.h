@@ -100,7 +100,7 @@ private:
     std::string AuthResultToString(enum csm_asso_result result);
     Result Pass3And4(Meter &meter);
     int ConnectHdlc(Meter &meter);
-    bool HdlcProcess(Meter &meter, const std::string &send, std::string &rcv, int timeout);
+    bool HdlcProcess(Meter &meter, const std::string &send, std::string &rcv, int timeout, bool enableRetries);
     std::string EncapsulateRequest(Meter &meter, csm_array *request);
     bool PerformCosemRead(Meter &meter);
     Result ConnectAarq(Meter &meter);

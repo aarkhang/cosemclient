@@ -96,7 +96,7 @@ void CosemClient::WaitForStop()
 }
 
 
-bool CosemClient::HdlcProcess(Meter &meter, const std::string &send, std::string &rcv, int timeout)
+bool CosemClient::HdlcProcess(Meter &meter, const std::string &send, std::string &rcv, int timeout, bool enableRetries)
 {
     bool retCode = false;
 
@@ -107,6 +107,12 @@ bool CosemClient::HdlcProcess(Meter &meter, const std::string &send, std::string
     std::string dataToSend = send;
     std::string dataSent;
     uint32_t retries = 0U;
+
+    if (!enableRetries)
+    {
+        // Disable retries by saturate the counter
+        retries = mConf.retries;
+    }
 
     do
     {
@@ -324,7 +330,7 @@ int CosemClient::ConnectHdlc(Meter &meter)
     std::string snrmData(&mSndBuffer[0], size);
     std::string data;
 
-    if (HdlcProcess(meter, snrmData, data, mConf.timeout_connect))
+    if (HdlcProcess(meter, snrmData, data, mConf.timeout_connect, false))
     {
         ret = data.size();
         Transport::Printer(data.c_str(), data.size(), PRINT_HEX);
@@ -578,7 +584,7 @@ Result CosemClient::ConnectAarq(Meter &meter)
         std::string request_data = EncapsulateRequest(meter, &scratch_array);
         std::string data;
 
-        if (HdlcProcess(meter, request_data, data, mConf.timeout_request))
+        if (HdlcProcess(meter, request_data, data, mConf.timeout_request, true))
         {
             Transport::Printer(data.c_str(), data.size(), PRINT_HEX);
 
@@ -918,7 +924,7 @@ Result CosemClient::AccessObject(Meter &meter, const Object &obj, csm_request &r
         {
             data.clear();
 
-            if (HdlcProcess(meter, request_data, data, mConf.timeout_request))
+            if (HdlcProcess(meter, request_data, data, mConf.timeout_request, true))
             {
                 Transport::Printer(data.c_str(), data.size(), PRINT_HEX);
                 csm_array_init(&scratch_array, &mScratch[0], cBufferSize, 0, 0);
