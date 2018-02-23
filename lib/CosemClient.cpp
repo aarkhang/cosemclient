@@ -1202,14 +1202,18 @@ bool  CosemClient::PerformCosemRead(Meter &meter)
 
                     Result result = AccessObject(meter, obj, request, response, app_array);
 
+                    mResults.push_back(result);
+
                     if (result.success)
                     {
                         std::cout << "Object: " << result.subject << " access success!" << std::endl;
+                        mReadIndex++;
                     }
-
-                    mResults.push_back(result);
-
-                    mReadIndex++;
+                    else
+                    {
+                        // stop at first failure
+                        ret = false;
+                    }
                 }
                 else
                 {
