@@ -10,9 +10,10 @@
  */
 
 #include <iostream>
+#include <fstream>
 #include <cstdint>
+#include <json/json.h>
 #include "Configuration.h"
-
 
 Configuration::Configuration()
 	: timeout_connect(3U)
@@ -68,241 +69,268 @@ Configuration::Configuration()
 */
 
 // Very tolerant, use default values of classes if corresponding parameter is not found
-void Configuration::ParseSessionFile(const std::string &file)
+bool Configuration::ParseSessionFile(const std::string &file)
 {
-    JsonReader reader;
-    JsonValue json;
-    JsonValue val;
-
-    if (reader.ParseFile(json, file))
+    std::ifstream ifs(file, std::ifstream::binary);
+    if(!ifs)
     {
-        JsonValue session = json.FindValue("session");
-        if (session.IsObject())
+        std::cerr << "** Error opening file: " << file << std::endl;
+        return false;
+    }
+
+    Json::CharReaderBuilder builder;
+    JSONCPP_STRING errs;
+    builder["collectComments"] = true;
+    Json::Value json;
+    Json::Value val;
+
+    if (!parseFromStream(builder, ifs, &json, &errs)) {
+        std::cerr << "** Error parsing " << file
+                  << " : "  << errs << std::endl;
+        return false;
+    }
+
+    Json::Value session = json.get("session", Json::Value::null);
+    if (session.isObject())
+    {
+        val = session.get("retries", Json::Value::null);
+        if (val.isInt())
         {
-            val= session.FindValue("retries");
-            if (val.IsInteger())
+            retries = static_cast<uint32_t>(val.asInt());
+        }
+
+        // *********************************   MODEM   *********************************
+
+        Json::Value modemObj = session.get("modem", Json::Value::null);
+        if (modemObj.isObject())
+        {
+            val = modemObj.get("phone", Json::Value::null);
+            if (val.isString())
             {
-                retries = static_cast<uint32_t>(val.GetInteger());
+                modem.phone = val.asString();
             }
 
-            // *********************************   MODEM   *********************************
-
-            JsonValue modemObj = session.FindValue("modem");
-            if (modemObj.IsObject())
+            val = modemObj.get("enable", Json::Value::null);
+            if (val.isBool())
             {
-                val = modemObj.FindValue("phone");
-                if (val.IsString())
-                {
-                    modem.phone = val.GetString();
-                }
-
-                val = modemObj.FindValue("enable");
-                if (val.IsBoolean())
-                {
-                    modem.useModem = val.GetBool();
-                }
-
-                val = modemObj.FindValue("init");
-                if (val.IsString())
-                {
-                    modem.init = val.GetString();
-                }
+                modem.useModem = val.asBool();
             }
 
-            // *********************************   TIMEOUTS   *********************************
-            JsonValue timeoutsObj = session.FindValue("timeouts");
-            if (timeoutsObj.IsObject())
+            val = modemObj.get("init", Json::Value::null);
+            if (val.isString())
             {
-                val = timeoutsObj.FindValue("dial");
-                if (val.IsInteger())
-                {
-                    timeout_dial = static_cast<uint32_t>(val.GetInteger());
-                }
-
-                val = timeoutsObj.FindValue("connect");
-                if (val.IsInteger())
-                {
-                    timeout_connect = static_cast<uint32_t>(val.GetInteger());
-                }
-
-                val = timeoutsObj.FindValue("request");
-                if (val.IsInteger())
-                {
-                    timeout_request = static_cast<uint32_t>(val.GetInteger());
-                }
+                modem.init = val.asString();
             }
         }
 
-        JsonValue meterObj = json.FindValue("meters");
-        if (meterObj.IsArray())
+        // *********************************   TIMEOUTS   *********************************
+        Json::Value timeoutsObj = session.get("timeouts", Json::Value::null);
+        if (timeoutsObj.isObject())
         {
-
-            for (JsonArray::Iterator iter = meterObj.GetArray().Begin(); iter != meterObj.GetArray().End(); ++iter)
+            val = timeoutsObj.get("dial", Json::Value::null);
+            if (val.isInt())
             {
-                Meter meter;
-                if (iter->IsObject())
-                {
-                    val = iter->FindValue("id");
-                    if (val.IsString())
-                    {
-                        meter.meterId = val.GetString();
-                    }
+                timeout_dial = static_cast<uint32_t>(val.asInt());
+            }
 
-                    val = iter->FindValue("transport");
-                    if (val.IsString())
-                    {
-                        std::string transport = val.GetString();
-                        if (transport == "hdlc")
-                        {
-                            meter.transport = HDLC;
-                        }
-                        else if (transport == "tcp")
-                        {
-                            meter.transport = TCP_IP;
-                        }
-                        else
-                        {
-                            meter.transport = UDP_IP;
-                        }
-                    }
+            val = timeoutsObj.get("connect", Json::Value::null);
+            if (val.isInt())
+            {
+                timeout_connect = static_cast<uint32_t>(val.asInt());
+            }
 
-                    // *********************************   COSEM   *********************************
-                    JsonValue cosemObj = iter->FindValue("cosem");
-                    if (cosemObj.IsObject())
-                    {
-                        val = cosemObj.FindValue("auth_password");
-                        if (val.IsString())
-                        {
-                            meter.cosem.auth_password = val.GetString();
-                        }
-
-                        val = cosemObj.FindValue("auth_hls_secret");
-                        if (val.IsString())
-                        {
-                            meter.cosem.auth_hls_secret = val.GetString();
-                        }
-
-                        val = cosemObj.FindValue("auth_level");
-                        if (val.IsString())
-                        {
-                            meter.cosem.auth_level = val.GetString();
-                        }
-
-                        val = cosemObj.FindValue("client");
-                        if (val.IsInteger())
-                        {
-                            meter.cosem.client = static_cast<unsigned int>(val.GetInteger());
-                        }
-
-                        val = cosemObj.FindValue("logical_device");
-                        if (val.IsInteger())
-                        {
-                            meter.cosem.logical_device = static_cast<unsigned int>(val.GetInteger());
-                        }
-                    }
-
-                    // *********************************   HDLC   *********************************
-                    JsonValue hdlcObj = iter->FindValue("hdlc");
-                    if (hdlcObj.IsObject())
-                    {
-                        val = hdlcObj.FindValue("phy_addr");
-                        if (val.IsInteger())
-                        {
-                            meter.hdlc.phy_address = static_cast<unsigned int>(val.GetInteger());
-                        }
-
-                        val = hdlcObj.FindValue("address_size");
-                        if (val.IsInteger())
-                        {
-                            meter.hdlc.addr_len = static_cast<unsigned int>(val.GetInteger());
-                        }
-
-                        val = hdlcObj.FindValue("test_addr");
-                        if (val.IsBoolean())
-                        {
-                            meter.testHdlcAddr = val.GetBool();
-                        }
-                    }
-
-                    // Add meter to the list
-                    meters.push_back(meter);
-                }
+            val = timeoutsObj.get("request", Json::Value::null);
+            if (val.isInt())
+            {
+                timeout_request = static_cast<uint32_t>(val.asInt());
             }
         }
+    }
 
-    }
-    else
+    Json::Value meterObj = json.get("meters", Json::Value::null);
+    if (meterObj.isArray())
     {
-        std::cout << "** Error opening file: " << file << std::endl;
+        for (Json::Value::const_iterator iter = meterObj.begin(); iter != meterObj.end(); ++iter)
+        {
+            //iter.key() << iter->asInt() << '\n';
+            Meter meter;
+            if (iter->isObject())
+            {
+                val = iter->get("id", Json::Value::null);
+                if (val.isString())
+                {
+                    meter.meterId = val.asString();
+                }
+
+                val = iter->get("transport", Json::Value::null);
+                if (val.isString())
+                {
+                    std::string transport = val.asString();
+                    if (transport == "hdlc")
+                    {
+                        meter.transport = HDLC;
+                    }
+                    else if (transport == "tcp")
+                    {
+                        meter.transport = TCP_IP;
+                    }
+                    else
+                    {
+                        meter.transport = UDP_IP;
+                    }
+                }
+
+                // *********************************   COSEM   *********************************
+                Json::Value cosemObj = iter->get("cosem", Json::Value::null);
+                if (cosemObj.isObject())
+                {
+                    val = cosemObj.get("auth_password", Json::Value::null);
+                    if (val.isString())
+                    {
+                        meter.cosem.auth_password = val.asString();
+                    }
+
+                    val = cosemObj.get("auth_hls_secret", Json::Value::null);
+                    if (val.isString())
+                    {
+                        meter.cosem.auth_hls_secret = val.asString();
+                    }
+
+                    val = cosemObj.get("auth_level", Json::Value::null);
+                    if (val.isString())
+                    {
+                        meter.cosem.auth_level = val.asString();
+                    }
+
+                    val = cosemObj.get("client", Json::Value::null);
+                    if (val.isInt())
+                    {
+                        meter.cosem.client = static_cast<unsigned int>(val.asInt());
+                    }
+
+                    val = cosemObj.get("logical_device", Json::Value::null);
+                    if (val.isInt())
+                    {
+                        meter.cosem.logical_device = static_cast<unsigned int>(val.asInt());
+                    }
+                }
+
+                // *********************************   HDLC   *********************************
+                Json::Value hdlcObj = iter->get("hdlc", Json::Value::null);
+                if (hdlcObj.isObject())
+                {
+                    val = hdlcObj.get("phy_addr", Json::Value::null);
+                    if (val.isInt())
+                    {
+                        meter.hdlc.phy_address = static_cast<unsigned int>(val.asInt());
+                    }
+
+                    val = hdlcObj.get("address_size", Json::Value::null);
+                    if (val.isInt())
+                    {
+                        meter.hdlc.addr_len = static_cast<unsigned int>(val.asInt());
+                    }
+
+                    val = hdlcObj.get("test_addr", Json::Value::null);
+                    if (val.isBool())
+                    {
+                        meter.testHdlcAddr = val.asBool();
+                    }
+                }
+
+                // Add meter to the list
+                meters.push_back(meter);
+            }
+        }
     }
+    return true;
 }
 
 
 // Very tolerant, use default values of classes if corresponding parameter is not found
-void Configuration::ParseComFile(const std::string &file, Transport::Params &comm)
+bool Configuration::ParseComFile(const std::string &file, Transport::Params &comm)
 {
-    JsonReader reader;
-    JsonValue json;
-
-    if (reader.ParseFile(json, file))
+    std::ifstream comm_ifs(file, std::ifstream::binary);
+    if(!comm_ifs)  // operator! is used here
     {
-        JsonValue portObj = json.FindValue("serial");
-        if (portObj.IsObject())
+        std::cerr << "** Error opening file: " << file << std::endl;
+        return false;
+    }
+
+    Json::CharReaderBuilder builder;
+    JSONCPP_STRING errs;
+    Json::Value jscomm;
+    builder["collectComments"] = true;
+
+    if (!parseFromStream(builder, comm_ifs, &jscomm, &errs)) {
+        std::cerr << "** Error parsing " << file
+                  << " : "  << errs << std::endl;
+        return false;
+    }
+    //std::cout << "Communication parameters = " <<  jscomm << std::endl; //This will print the entire json object.
+    Json::Value portObj = jscomm.get("serial", Json::Value::null);
+    if (portObj.isObject())
+    {
+        Json::Value val = portObj.get("port", Json::Value::null);
+        if (val.isString())
         {
-            JsonValue val = portObj.FindValue("port");
-            if (val.IsString())
-            {
-                comm.port = val.GetString();
-                val = portObj.FindValue("baudrate");
-                if (val.IsInteger())
-                {
-                    comm.baudrate = static_cast<unsigned int>(val.GetInteger());
-                }
-            }
+            comm.port = val.asString();
+            val = portObj.get("baudrate", 9600);
+            if (val.isInt())
+                comm.baudrate = static_cast<unsigned int>(val.asInt());
         }
     }
-    else
-    {
-        std::cout << "** Error opening file: " << file << std::endl;
-    }
-
+    std::cout << "Port "  << comm.port << std::endl;
+    std::cout << "Baudrate "  << comm.baudrate << std::endl;
+    return true;
 }
 
-void Configuration::ParseObjectsFile(const std::string &file)
+bool Configuration::ParseObjectsFile(const std::string &file)
 {
-    JsonReader reader;
-    JsonValue json;
-
-    if (reader.ParseFile(json, file))
+    std::ifstream ifs(file, std::ifstream::binary);
+    if(!ifs)
     {
-        JsonValue val = json.FindValue("objects");
-        if (val.IsArray())
+        std::cerr << "** Error opening file: " << file << std::endl;
+        return false;
+    }
+
+    Json::CharReaderBuilder builder;
+    JSONCPP_STRING errs;
+    Json::Value json;
+    builder["collectComments"] = true;
+
+    if (!parseFromStream(builder, ifs, &json, &errs)) {
+        std::cerr << "** Error parsing " << file
+                  << " : "  << errs << std::endl;
+        return false;
+    }
+    Json::Value arrval = json.get("objects", Json::Value::null);
+    if (arrval.isArray())
+    {
+        for (Json::Value::const_iterator iter = arrval.begin(); iter != arrval.end(); ++iter)
         {
-            JsonArray arr = val.GetArray();
-            for (std::uint32_t i = 0U; i < arr.Size(); i++)
+            if (iter->isObject())
             {
                 Object object;
-                JsonValue obj = arr.GetEntry(i);
-
-                val = obj.FindValue("name");
-                if (val.IsString())
+                Json::Value val = iter->get("name", Json::Value::null);
+                if (val.isString())
                 {
-                    object.name = val.GetString();
+                    object.name = val.asString();
                 }
-                val = obj.FindValue("logical_name");
-                if (val.IsString())
+                val = iter->get("logical_name", Json::Value::null);
+                if (val.isString())
                 {
-                    object.ln = val.GetString();
+                    object.ln = val.asString();
                 }
-                val = obj.FindValue("class_id");
-                if (val.IsInteger())
+                val = iter->get("class_id", Json::Value::null);
+                if (val.isInt())
                 {
-                    object.class_id = static_cast<std::uint16_t>(val.GetInteger());
+                    object.class_id = static_cast<std::uint16_t>(val.asInt());
                 }
-                val = obj.FindValue("attribute_id");
-                if (val.IsInteger())
+                val = iter->get("attribute_id", Json::Value::null);
+                if (val.isInt())
                 {
-                    object.attribute_id = static_cast<std::int8_t>(val.GetInteger());
+                    object.attribute_id = static_cast<std::int8_t>(val.asInt());
                 }
 
                 object.Print();
@@ -310,9 +338,5 @@ void Configuration::ParseObjectsFile(const std::string &file)
             }
         }
     }
-    else
-    {
-        std::cout << "** Error opening file: " << file << std::endl;
-    }
+    return true;
 }
-

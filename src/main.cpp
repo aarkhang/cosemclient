@@ -10,11 +10,9 @@
  */
 
 #include <iostream>
-#include "JsonReader.h"
 #include "CosemClient.h"
 #include "Configuration.h"
 #include "csm_array.h"
-#include "Util.h"
 
 CosemClient client;
 

@@ -10,6 +10,10 @@ set(TARGET cosemclient)
 
 add_executable(${TARGET})
 
+include(CMakePrintHelpers)
+
+find_package(jsoncpp REQUIRED)
+
 target_compile_definitions(${TARGET} PRIVATE
     COSEM_CLIENT_VER=\"1.2.0\"
 )
@@ -29,14 +33,16 @@ if(MSVC)
     _CRT_SECURE_NO_WARNINGS
     _CRT_SECURE_NO_DEPRECATE
   )
+  target_compile_options(${TARGET} PRIVATE /W4 )
 elseif(MINGW)
   target_compile_definitions(${TARGET} PRIVATE
     STRSAFE_NO_DEPRECATE
   )
-elseif(CMAKE_COMPILER_IS_GNUCXX)
-  add_compile_options(
-        -Wno-unused-function
-        -Wno-unused-result
+else()
+  target_compile_options(${TARGET} PRIVATE
+    -Wall
+    -Wextra
+    -Wpedantic
   )
 endif()
 
@@ -65,10 +71,12 @@ target_include_directories(${TARGET} PRIVATE
     ${TOP_DIR}/share/serial
     ${TOP_DIR}/share/util
     ${TOP_DIR}/json
+    ${TOP_DIR}/cpp11-on-multicore/common
 )
 
 target_link_libraries(${TARGET} PRIVATE
   cosemlib
+  jsoncpp_lib_static
 )
 
 if(WIN32)

@@ -50,9 +50,12 @@ bool CosemClient::Initialize(const std::string &commFile, const std::string &obj
     Result result;
     result.subject = "OPEN COM PORT";
 
-    mConf.ParseComFile(commFile, params);
-    mConf.ParseObjectsFile(objectsFile);
-    mConf.ParseSessionFile(meterFile);
+    if(!mConf.ParseComFile(commFile, params))
+        return false;
+    if(!mConf.ParseObjectsFile(objectsFile))
+        return false;
+    if(!mConf.ParseSessionFile(meterFile))
+        return false;
 
     if (mConf.modem.useModem)
     {

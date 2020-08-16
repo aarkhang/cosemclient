@@ -16,7 +16,7 @@
 #include <cstdint>
 #include <iostream>
 
-#include "JsonReader.h"
+//#include <json/json.h>
 #include "hdlc.h"
 #include "Transport.h"
 #include "csm_association.h"
@@ -164,9 +164,9 @@ struct Configuration
 
     Configuration();
 
-    void ParseSessionFile(const std::string &file);
-    void ParseComFile(const std::string &file, Transport::Params &comm);
-    void ParseObjectsFile(const std::string &file);
+    bool ParseSessionFile(const std::string &file);
+    bool ParseComFile(const std::string &file, Transport::Params &comm);
+    bool ParseObjectsFile(const std::string &file);
 };
 
 

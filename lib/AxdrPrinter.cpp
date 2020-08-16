@@ -12,12 +12,8 @@
 #include "os_util.h"
 #include "csm_axdr_codec.h"
 #include "csm_array.h"
-#include "JsonWriter.h"
-#include "JsonValue.h"
 #include "AxdrPrinter.h"
 #include "clock.h"
-#include "Util.h"
-#include "date.h"
 
 #include <iomanip>
 #include <ctime>
@@ -105,10 +101,6 @@ std::string UnitName(uint8_t tag)
     }
     return name;
 }
-
-//JsonObject root;
-//std::vector<JsonValue> levels;
-//JsonValue current;
 
 std::string DateFromCosem(uint32_t size, uint8_t *data)
 {

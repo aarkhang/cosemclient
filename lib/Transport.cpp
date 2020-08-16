@@ -90,7 +90,8 @@ int Transport::Send(const std::string &data, PrintFormat format)
 
 bool Transport::WaitForData(std::string &data, int timeout)
 {
-    bool notified = mSem.Wait(timeout*1000);
+    bool notified = true;
+    mSem.wait(); // Wait(timeout*1000);
 
     if (!notified)
     {
@@ -141,7 +142,7 @@ void Transport::Reader()
             mMutex.unlock();
 
             // Signal new data available
-            mSem.Notify();
+            mSem.signal();
         }
         else if (ret == 0)
         {

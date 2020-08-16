@@ -18,7 +18,7 @@
 #include <thread>
 #include <queue>
 #include <mutex>
-#include "Semaphore.h"
+#include "sema.h"
 
 enum PrintFormat
 {
