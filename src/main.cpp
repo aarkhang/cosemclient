@@ -9,10 +9,7 @@
  *
  */
 
-#include <iostream>
 #include "CosemClient.h"
-#include "Configuration.h"
-#include "csm_array.h"
 
 CosemClient client;
 

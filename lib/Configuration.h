@@ -14,9 +14,7 @@
 
 #include <string>
 #include <cstdint>
-#include <iostream>
 
-//#include <json/json.h>
 #include "hdlc.h"
 #include "Transport.h"
 #include "csm_association.h"

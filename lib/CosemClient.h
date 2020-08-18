@@ -12,7 +12,14 @@
 #ifndef COSEM_CLIENT_H
 #define COSEM_CLIENT_H
 
+#ifdef _WIN32
+ // do something for windows like include <windows.h>
+#elif defined __unix__
 #include <unistd.h>
+#elif defined __APPLE__
+#error Apple OSes not supported
+#endif
+
 #include <cstdint>
 #include <mutex>
 #include <condition_variable>

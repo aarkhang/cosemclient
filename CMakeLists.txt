@@ -12,7 +12,7 @@ add_executable(${TARGET})
 
 include(CMakePrintHelpers)
 
-find_package(jsoncpp REQUIRED)
+find_package(jsoncpp CONFIG REQUIRED)
 
 target_compile_definitions(${TARGET} PRIVATE
     COSEM_CLIENT_VER=\"1.2.0\"
@@ -70,13 +70,12 @@ target_include_directories(${TARGET} PRIVATE
     ${TOP_DIR}/share/ip
     ${TOP_DIR}/share/serial
     ${TOP_DIR}/share/util
-    ${TOP_DIR}/json
     ${TOP_DIR}/cpp11-on-multicore/common
 )
 
 target_link_libraries(${TARGET} PRIVATE
   cosemlib
-  jsoncpp_lib_static
+  jsoncpp_lib
 )
 
 if(WIN32)

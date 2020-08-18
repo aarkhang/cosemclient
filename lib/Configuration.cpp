@@ -90,10 +90,10 @@ bool Configuration::ParseSessionFile(const std::string &file)
         return false;
     }
 
-    Json::Value session = json.get("session", Json::Value::null);
+    Json::Value session = json.get("session", Json::Value());
     if (session.isObject())
     {
-        val = session.get("retries", Json::Value::null);
+        val = session.get("retries", Json::Value());
         if (val.isInt())
         {
             retries = static_cast<uint32_t>(val.asInt());
@@ -101,22 +101,22 @@ bool Configuration::ParseSessionFile(const std::string &file)
 
         // *********************************   MODEM   *********************************
 
-        Json::Value modemObj = session.get("modem", Json::Value::null);
+        Json::Value modemObj = session.get("modem", Json::Value());
         if (modemObj.isObject())
         {
-            val = modemObj.get("phone", Json::Value::null);
+            val = modemObj.get("phone", Json::Value());
             if (val.isString())
             {
                 modem.phone = val.asString();
             }
 
-            val = modemObj.get("enable", Json::Value::null);
+            val = modemObj.get("enable", Json::Value());
             if (val.isBool())
             {
                 modem.useModem = val.asBool();
             }
 
-            val = modemObj.get("init", Json::Value::null);
+            val = modemObj.get("init", Json::Value());
             if (val.isString())
             {
                 modem.init = val.asString();
@@ -124,22 +124,22 @@ bool Configuration::ParseSessionFile(const std::string &file)
         }
 
         // *********************************   TIMEOUTS   *********************************
-        Json::Value timeoutsObj = session.get("timeouts", Json::Value::null);
+        Json::Value timeoutsObj = session.get("timeouts", Json::Value());
         if (timeoutsObj.isObject())
         {
-            val = timeoutsObj.get("dial", Json::Value::null);
+            val = timeoutsObj.get("dial", Json::Value());
             if (val.isInt())
             {
                 timeout_dial = static_cast<uint32_t>(val.asInt());
             }
 
-            val = timeoutsObj.get("connect", Json::Value::null);
+            val = timeoutsObj.get("connect", Json::Value());
             if (val.isInt())
             {
                 timeout_connect = static_cast<uint32_t>(val.asInt());
             }
 
-            val = timeoutsObj.get("request", Json::Value::null);
+            val = timeoutsObj.get("request", Json::Value());
             if (val.isInt())
             {
                 timeout_request = static_cast<uint32_t>(val.asInt());
@@ -147,7 +147,7 @@ bool Configuration::ParseSessionFile(const std::string &file)
         }
     }
 
-    Json::Value meterObj = json.get("meters", Json::Value::null);
+    Json::Value meterObj = json.get("meters", Json::Value());
     if (meterObj.isArray())
     {
         for (Json::Value::const_iterator iter = meterObj.begin(); iter != meterObj.end(); ++iter)
@@ -156,13 +156,13 @@ bool Configuration::ParseSessionFile(const std::string &file)
             Meter meter;
             if (iter->isObject())
             {
-                val = iter->get("id", Json::Value::null);
+                val = iter->get("id", Json::Value());
                 if (val.isString())
                 {
                     meter.meterId = val.asString();
                 }
 
-                val = iter->get("transport", Json::Value::null);
+                val = iter->get("transport", Json::Value());
                 if (val.isString())
                 {
                     std::string transport = val.asString();
@@ -181,34 +181,34 @@ bool Configuration::ParseSessionFile(const std::string &file)
                 }
 
                 // *********************************   COSEM   *********************************
-                Json::Value cosemObj = iter->get("cosem", Json::Value::null);
+                Json::Value cosemObj = iter->get("cosem", Json::Value());
                 if (cosemObj.isObject())
                 {
-                    val = cosemObj.get("auth_password", Json::Value::null);
+                    val = cosemObj.get("auth_password", Json::Value());
                     if (val.isString())
                     {
                         meter.cosem.auth_password = val.asString();
                     }
 
-                    val = cosemObj.get("auth_hls_secret", Json::Value::null);
+                    val = cosemObj.get("auth_hls_secret", Json::Value());
                     if (val.isString())
                     {
                         meter.cosem.auth_hls_secret = val.asString();
                     }
 
-                    val = cosemObj.get("auth_level", Json::Value::null);
+                    val = cosemObj.get("auth_level", Json::Value());
                     if (val.isString())
                     {
                         meter.cosem.auth_level = val.asString();
                     }
 
-                    val = cosemObj.get("client", Json::Value::null);
+                    val = cosemObj.get("client", Json::Value());
                     if (val.isInt())
                     {
                         meter.cosem.client = static_cast<unsigned int>(val.asInt());
                     }
 
-                    val = cosemObj.get("logical_device", Json::Value::null);
+                    val = cosemObj.get("logical_device", Json::Value());
                     if (val.isInt())
                     {
                         meter.cosem.logical_device = static_cast<unsigned int>(val.asInt());
@@ -216,22 +216,22 @@ bool Configuration::ParseSessionFile(const std::string &file)
                 }
 
                 // *********************************   HDLC   *********************************
-                Json::Value hdlcObj = iter->get("hdlc", Json::Value::null);
+                Json::Value hdlcObj = iter->get("hdlc", Json::Value());
                 if (hdlcObj.isObject())
                 {
-                    val = hdlcObj.get("phy_addr", Json::Value::null);
+                    val = hdlcObj.get("phy_addr", Json::Value());
                     if (val.isInt())
                     {
                         meter.hdlc.phy_address = static_cast<unsigned int>(val.asInt());
                     }
 
-                    val = hdlcObj.get("address_size", Json::Value::null);
+                    val = hdlcObj.get("address_size", Json::Value());
                     if (val.isInt())
                     {
                         meter.hdlc.addr_len = static_cast<unsigned int>(val.asInt());
                     }
 
-                    val = hdlcObj.get("test_addr", Json::Value::null);
+                    val = hdlcObj.get("test_addr", Json::Value());
                     if (val.isBool())
                     {
                         meter.testHdlcAddr = val.asBool();
@@ -268,10 +268,10 @@ bool Configuration::ParseComFile(const std::string &file, Transport::Params &com
         return false;
     }
     //std::cout << "Communication parameters = " <<  jscomm << std::endl; //This will print the entire json object.
-    Json::Value portObj = jscomm.get("serial", Json::Value::null);
+    Json::Value portObj = jscomm.get("serial", Json::Value());
     if (portObj.isObject())
     {
-        Json::Value val = portObj.get("port", Json::Value::null);
+        Json::Value val = portObj.get("port", Json::Value());
         if (val.isString())
         {
             comm.port = val.asString();
@@ -304,7 +304,7 @@ bool Configuration::ParseObjectsFile(const std::string &file)
                   << " : "  << errs << std::endl;
         return false;
     }
-    Json::Value arrval = json.get("objects", Json::Value::null);
+    Json::Value arrval = json.get("objects", Json::Value());
     if (arrval.isArray())
     {
         for (Json::Value::const_iterator iter = arrval.begin(); iter != arrval.end(); ++iter)
@@ -312,22 +312,22 @@ bool Configuration::ParseObjectsFile(const std::string &file)
             if (iter->isObject())
             {
                 Object object;
-                Json::Value val = iter->get("name", Json::Value::null);
+                Json::Value val = iter->get("name", Json::Value());
                 if (val.isString())
                 {
                     object.name = val.asString();
                 }
-                val = iter->get("logical_name", Json::Value::null);
+                val = iter->get("logical_name", Json::Value());
                 if (val.isString())
                 {
                     object.ln = val.asString();
                 }
-                val = iter->get("class_id", Json::Value::null);
+                val = iter->get("class_id", Json::Value());
                 if (val.isInt())
                 {
                     object.class_id = static_cast<std::uint16_t>(val.asInt());
                 }
-                val = iter->get("attribute_id", Json::Value::null);
+                val = iter->get("attribute_id", Json::Value());
                 if (val.isInt())
                 {
                     object.attribute_id = static_cast<std::int8_t>(val.asInt());

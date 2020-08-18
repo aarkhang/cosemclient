@@ -32,10 +32,11 @@ std::vector<std::string> Split(const std::string & s, const char* sep)
 
 #if defined(_WIN32)
 #include <io.h>
+#include <direct.h>
 
 void Mkdir(const std::string & dir)
 {
-    mkdir(dir.c_str());
+    _mkdir(dir.c_str());
 }
 
 std::string DIR_SEPARATOR = "\\";
