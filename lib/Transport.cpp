@@ -88,10 +88,9 @@ int Transport::Send(const std::string &data, PrintFormat format)
     return ret;
 }
 
-bool Transport::WaitForData(std::string &data, int /*timeout*/)
+bool Transport::WaitForData(std::string &data, int timeout)
 {
-    bool notified = true;
-    mSem.wait(); // Wait(timeout*1000);
+    bool notified = mSem.wait(timeout);
 
     if (!notified)
     {

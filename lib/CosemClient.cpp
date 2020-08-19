@@ -1263,7 +1263,7 @@ void CosemClient::PrintResult()
         {
             f << "<Result status=\"failure\">" << std::endl;
             std::cout << "One or more problem was found." << std::endl;
-            for (uint32_t i; i < mResults.size(); i++)
+            for (uint32_t i = 0; i < mResults.size(); i++)
             {
                if (!mResults[i].success)
                {
